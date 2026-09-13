@@ -15,7 +15,7 @@ namespace AstraExpress
         private readonly List<PowerFlowSegment> powerFlowSegments = new List<PowerFlowSegment>();
         private readonly Dictionary<Cell, int> powerSourceDistances = new Dictionary<Cell, int>();
         private readonly HashSet<Cell> powerSourcePorts = new HashSet<Cell>();
-        private readonly MaterialPropertyBlock powerFlowProperties = new MaterialPropertyBlock();
+        private MaterialPropertyBlock powerFlowProperties;
         private static readonly int FlowLengthId = Shader.PropertyToID("_FlowLength");
         private static readonly int FlowOffsetId = Shader.PropertyToID("_FlowOffset");
         private static readonly int FlowDirectionId = Shader.PropertyToID("_FlowDirection");

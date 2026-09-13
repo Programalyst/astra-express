@@ -104,6 +104,7 @@ namespace AstraExpress
 
         private void Start()
         {
+            powerFlowProperties = new MaterialPropertyBlock();
             Application.targetFrameRate = 60;
             worldCamera = Camera.main;
             cameraTarget = new Vector3(15, 0, 16);
