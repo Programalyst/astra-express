@@ -247,7 +247,7 @@ namespace AstraExpress
                 var renderers = tile.GetComponentsInChildren<Renderer>();
                 var bounds = renderers[0].bounds;
                 foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
-                tile.transform.localScale = new Vector3(1, TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), 1);
+                tile.transform.localScale = new Vector3(TerrainGrid.CellSize / Mathf.Max(bounds.size.x, 0.01f), TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), TerrainGrid.CellSize / Mathf.Max(bounds.size.z, 0.01f));
                 Cell uphill = Simulation.Terrain.Uphill(cell);
                 float yaw = Simulation.Terrain.IsCorner(cell) ? 90 : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
                 tile.transform.localRotation = Quaternion.Euler(0, yaw, 0);

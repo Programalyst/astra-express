@@ -6,6 +6,8 @@ The northern 2x2 Fluxite patch at `(4, 17)` now sits on a separate plateau at th
 
 ## Rules and controls
 
+Cliff-art follow-up: blocked straight walls now use the owner's `terrain_sideCliff_double.prefab`, replacing `terrain_side.fbx`. Its two children are centered from their combined renderer bounds and fitted to one 2x2-unit tile with a 1.5-unit rise. No prefab anchor change is required. A temporary Unity probe verified all 34 straight walls' bounds, two readable child meshes and colliders per tile, and 10 samples across the two joins with the northern outer corner (maximum height difference 0.0005 units). The probe was removed. Ramps and simulation traversal rules are unchanged; this art update has not been deployed.
+
 - Rover and train paths use A* over the existing four-neighbor grid. Heights do not introduce NavMesh or a third cell coordinate.
 - Ramps connect only their low and high ends. Hillside cells, diagonal shortcuts, and turns across ramp sides are blocked.
 - The rover and trains move at two tile-equivalents of surface distance per second. The rover pays two battery units per surface tile; traversing low cell 16 through a ramp to high cell 18 costs 4.5 power in either direction, before simultaneous generation.
@@ -32,7 +34,7 @@ Original eastern plateau validation:
 - 102 external pure-C# simulation checks pass: the previous 66 economy/fuel/fleet checks plus 36 terrain checks.
 - New coverage includes both ramp directions, side exits, nearest-pass routing, resource footprint levels and reachability, atomic construction rejection, power/rail cliff isolation, exact movement-energy accounting, depletion and recovery on a slope, and plateau delivery/parking cargo conservation.
 - A temporary Unity Editor probe verified 1,848 collider heights against the simulation across every tile, including three positions along each ramp. The probe was removed after validation and does not ship.
-- Runtime-created terrain MeshColliders require CPU-readable meshes in the Web player. Read/Write is enabled only for `terrain.fbx`, `terrain_ramp.fbx`, `terrain_side.fbx`, and `terrain_sideCorner.fbx`; their importer metadata must travel with the source changes.
+- Runtime-created terrain MeshColliders require CPU-readable meshes in the Web player. The current terrain assets `terrain.fbx`, `terrain_ramp.fbx`, `terrain_sideCliff.fbx`, and `terrain_sideCorner.fbx` have Read/Write enabled; their importer metadata must travel with the source changes. The previously used `terrain_side.fbx` also retains its readable setting.
 - Unity Play Mode demonstrated an upper-plateau extractor powered through a ramp, repeated paid train deliveries, and a mouse-issued downhill rover order.
 - The corrected Web build succeeded and was exercised in local Chrome at `http://127.0.0.1:8093/`: a mouse-issued order moved the rover from the lowlands through the ramp to `(19, 6)`, displaying "Upper plateau" and revealing the 2x2 deposit. The earlier non-readable-mesh errors no longer appeared on startup.
 - The terrain map is a fixed first layout, not a procedural terrain generator. Major route blocking by future construction is still a player concern; no demolition/refund system has been added.
