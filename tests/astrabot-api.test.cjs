@@ -138,7 +138,11 @@ test('progress distinguishes already known ore from discovery and never trusts s
 });
 const validate = (actions, data=frame()) => harness().planner.parseResult(plan(actions),data,true);
 test('plan schema rejects unknown commands, duplicate IDs, coordinates, duration, and extra fields',() => {
-  for (const actions of [[action('shell')],[action(),action()],[action('explore',{x:28,y:0})],[action('select',{x:2,y:3,seconds:4})],[action('wait',{seconds:21})],[action('stop',{url:'https://example.com'})],[action('explore',{x:2,y:3}),action('stop',{id:'last'})]]) assert.throws(() => validate(actions));
+  for (const actions of [[action('shell')],[action(),action()],[action('explore',{x:32,y:0})],[action('explore',{x:0,y:32})],[action('select',{x:2,y:3,seconds:4})],[action('wait',{seconds:21})],[action('stop',{url:'https://example.com'})],[action('explore',{x:2,y:3}),action('stop',{id:'last'})]]) assert.throws(() => validate(actions));
+});
+test('expanded grid corner is accepted by the browser planner',() => {
+  const result=validate([action('explore',{x:31,y:31})]);
+  assert.equal(result.actions[0].x,31); assert.equal(result.actions[0].y,31);
 });
 test('hidden ore, overspending, fleet limits, and unconnected dispatch are rejected',() => {
   assert.throws(() => validate([action('build_extractor',{x:2,y:3})]),/revealed/);

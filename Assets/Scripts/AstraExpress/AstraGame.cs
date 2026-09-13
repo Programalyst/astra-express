@@ -186,7 +186,7 @@ namespace AstraExpress
                         foreach (var renderer in cluster.GetComponentsInChildren<Renderer>()) renderer.sharedMaterial = fuelMaterial;
                     ore[cell] = cluster;
                 }
-            roverVisual = Model(RoverModel, "Rover 01", worldRoot, Position(7, 6, 0.1f), 1.2f, 0.9f).transform;
+            roverVisual = Model(RoverModel, "Rover 01", worldRoot, Position(7, 6, 0.08f), 1.7f, 1.1f, true).transform;
             var previewObject = new GameObject("Placement preview");
             previewObject.transform.SetParent(worldRoot);
             preview = previewObject.AddComponent<LineRenderer>();
@@ -211,7 +211,7 @@ namespace AstraExpress
             return instance;
         }
 
-        private GameObject Model(GameObject prefab, string objectName, Transform parent, Vector3 position, float width, float height)
+        private GameObject Model(GameObject prefab, string objectName, Transform parent, Vector3 position, float width, float height, bool preserveMaterials = false)
         {
             var holder = new GameObject(objectName);
             holder.transform.SetParent(parent, false);
@@ -234,6 +234,7 @@ namespace AstraExpress
             model.transform.localPosition = new Vector3(-center.x * scale, -(bounds.min.y - holder.transform.position.y) * scale, -center.z * scale);
             foreach (var renderer in renderers)
             {
+                if (preserveMaterials) continue;
                 var materials = renderer.sharedMaterials;
                 for (int index = 0; index < materials.Length; index++)
                 {

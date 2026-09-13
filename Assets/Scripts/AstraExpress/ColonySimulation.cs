@@ -73,8 +73,8 @@ namespace AstraExpress
 
     public sealed class ColonySimulation
     {
-        public const int Width = 28;
-        public const int Height = 22;
+        public const int Width = 32;
+        public const int Height = 32;
         public const float BatteryCapacity = 100;
         public const float Reserve = 10;
         public const int PlantCost = 250;
@@ -321,7 +321,7 @@ namespace AstraExpress
                     var next = current + direction;
                     if (visited.Contains(next) || !Allowed(next) || !Terrain.CanTraverse(current, next)) continue;
                     // Fewer new tiles wins; distance breaks ties. Every simple route
-                    // is shorter than the 1024 multiplier on this 28 x 22 map.
+                    // has fewer than 1024 steps on this 32 x 32 map.
                     int score = scores[current] + (network.Contains(next) ? 0 : price * 1024) + 1;
                     if (scores.TryGetValue(next, out int old) && old <= score) continue;
                     scores[next] = score; previous[next] = current;

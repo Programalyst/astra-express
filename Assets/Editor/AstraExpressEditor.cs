@@ -55,6 +55,12 @@ public static class AstraExpressEditor
             }
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode before running Editor jobs.");
             if (action == "setup") CreateScene();
+            else if (action == "reloadscene")
+            {
+                if (SceneManager.GetActiveScene().isDirty) throw new InvalidOperationException("Save scene changes before reloading.");
+                EditorSceneManager.OpenScene(ScenePath);
+                Status("reloaded", "Reloaded the saved colony scene.");
+            }
             else if (action == "switchweb")
             {
                 Status("switching", "Switching to Web; wait for compilation and domain reload before building.");
@@ -103,7 +109,7 @@ public static class AstraExpressEditor
         RenderSettings.ambientLight = new Color(0.57f, 0.64f, 0.77f);
         var game = new GameObject("Astra Express").AddComponent<AstraGame>();
         game.SurfaceTemplate = surface;
-        game.RoverModel = LoadModel(SpaceRoot + "rover.fbx");
+        game.RoverModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/Vehicles/SM_Veh_Apc_01.prefab");
         game.ColonyModel = LoadModel(SpaceRoot + "hangar_roundA.fbx");
         game.SolarModel = LoadModel("Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx");
         game.ExtractorModel = LoadModel(SpaceRoot + "machine_generatorLarge.fbx");

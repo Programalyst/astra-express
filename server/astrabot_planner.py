@@ -27,7 +27,7 @@ def point(value):
     if not isinstance(value, dict):
         return None
     x, y = value.get('x'), value.get('y')
-    if type(x) is not int or type(y) is not int or not (0 <= x < 28 and 0 <= y < 22):
+    if type(x) is not int or type(y) is not int or not (0 <= x < 32 and 0 <= y < 32):
         return None
     return (x, y)
 
@@ -61,10 +61,10 @@ def plan_schema():
             fields = {
                 'id': {'type': 'string', 'minLength': 1, 'maxLength': 48},
                 'type': {'type': 'string', 'enum': [kind]},
-                'x': {'type': 'null'} if no_coordinates else {'type': 'integer', 'minimum': 0, 'maximum': 27},
-                'y': {'type': 'null'} if no_coordinates else {'type': 'integer', 'minimum': 0, 'maximum': 21},
-                'targetX': {'type': ['integer', 'null'], 'minimum': 0, 'maximum': 27} if kind == 'dispatch_train' else {'type': 'null'},
-                'targetY': {'type': ['integer', 'null'], 'minimum': 0, 'maximum': 21} if kind == 'dispatch_train' else {'type': 'null'},
+                'x': {'type': 'null'} if no_coordinates else {'type': 'integer', 'minimum': 0, 'maximum': 31},
+                'y': {'type': 'null'} if no_coordinates else {'type': 'integer', 'minimum': 0, 'maximum': 31},
+                'targetX': {'type': ['integer', 'null'], 'minimum': 0, 'maximum': 31} if kind == 'dispatch_train' else {'type': 'null'},
+                'targetY': {'type': ['integer', 'null'], 'minimum': 0, 'maximum': 31} if kind == 'dispatch_train' else {'type': 'null'},
                 'trainIndex': {'type': 'integer', 'minimum': 0, 'maximum': 3} if selection == 'train' else {'type': 'null'},
                 'seconds': {'type': 'integer', 'minimum': 1, 'maximum': 20} if kind == 'wait' else {'type': 'null'},
                 'reason': {'type': 'string', 'minLength': 1, 'maxLength': 140},
@@ -173,7 +173,7 @@ def validate_actions(actions, data):
             if xy in buildings or xy not in (point(state.get(site_name)), point(data.get('selectedTile'))):
                 raise ValueError('Construction needs a known site or selected tile')
             footprint = {(xy[0] + dx, xy[1] + dy) for dx in range(2) for dy in range(2)}
-            if any(x >= 28 or y >= 22 for x, y in footprint) or xy[1] == 0:
+            if any(x >= 32 or y >= 32 for x, y in footprint) or xy[1] == 0:
                 raise ValueError('Building footprint or south port is out of bounds')
             for origin, deposit in deposits.items():
                 size = deposit.get('size', 1)

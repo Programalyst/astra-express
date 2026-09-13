@@ -92,12 +92,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -198,12 +198,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -253,12 +253,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -308,12 +308,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -363,12 +363,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -418,12 +418,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -473,12 +473,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": [
@@ -486,7 +486,7 @@ window.astraBotContract = {
                     "null"
                   ],
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "targetY": {
                   "type": [
@@ -494,7 +494,7 @@ window.astraBotContract = {
                     "null"
                   ],
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "trainIndex": {
                   "type": "null"
@@ -640,12 +640,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -695,12 +695,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"
@@ -750,12 +750,12 @@ window.astraBotContract = {
                 "x": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 27
+                  "maximum": 31
                 },
                 "y": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 21
+                  "maximum": 31
                 },
                 "targetX": {
                   "type": "null"

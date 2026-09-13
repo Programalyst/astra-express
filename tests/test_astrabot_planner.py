@@ -44,7 +44,7 @@ class PlanValidationTests(unittest.TestCase):
         self.assertEqual(request['environment'], {'type': 'none'})
         self.assertEqual(request['agent']['tools'], [])
         self.assertEqual(request['agent']['model'], 'gpt-5.4-mini')
-        for change in [{'goal': ''}, {'goal': 'g' * 601}, {'selectedTile': {'x': 28, 'y': 1}}, {'previousPlan': {'results': [{}] * 61}}]:
+        for change in [{'goal': ''}, {'goal': 'g' * 601}, {'selectedTile': {'x': 32, 'y': 1}}, {'previousPlan': {'results': [{}] * 61}}]:
             with self.assertRaises(ValueError): planner.validate_plan_payload({**data, **change})
 
     def test_current_revealed_mine_can_be_built_connected_and_dispatched(self):
@@ -64,8 +64,14 @@ class PlanValidationTests(unittest.TestCase):
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([bad])), request_data())
 
     def test_out_of_bounds_fractional_and_boolean_coordinates_rejected(self):
-        for x, y in [(28, 5), (5, 22), (-1, 0), (1.5, 5), (True, 5)]:
+        for x, y in [(32, 5), (5, 32), (-1, 0), (1.5, 5), (True, 5)]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('explore', x, y)])), request_data())
+
+    def test_expanded_grid_corner_is_valid(self):
+        data = request_data()
+        planner.validate_plan_payload({**data, 'selectedTile': {'x': 31, 'y': 31}})
+        result = planner.parse_plan(json.dumps(plan([action('explore', 31, 31)])), data)
+        self.assertEqual((result['actions'][0]['x'], result['actions'][0]['y']), (31, 31))
 
     def test_exploration_ends_batch_before_building_unseen_future_resources(self):
         with self.assertRaises(ValueError):

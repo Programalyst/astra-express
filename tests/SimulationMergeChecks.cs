@@ -29,6 +29,11 @@ class Review
         var sim = new ColonySimulation();
         sim.Reveal(14, 11, 100);
         var terrain = sim.Terrain;
+        Check(ColonySimulation.Width == 32 && ColonySimulation.Height == 32, "Grid is 32 by 32");
+        Check(ColonySimulation.InBounds(new Cell(31, 31)), "Expanded corner is in bounds");
+        Check(!ColonySimulation.InBounds(new Cell(32, 31)) && !ColonySimulation.InBounds(new Cell(31, 32)), "Expanded boundaries reject outside cells");
+        Check(sim.IsRevealed(new Cell(31, 31)), "Reveal covers expanded grid");
+        Reach(sim, new Cell(31, 31));
         foreach (int row in new[] { 5, 15 })
         {
             var low = new Cell(16, row);
