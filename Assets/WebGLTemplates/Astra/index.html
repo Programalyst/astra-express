@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Astra Express — First Light</title>
   <link rel="stylesheet" href="coach.css">
+  <link rel="stylesheet" href="astrabot-control.css">
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0e1421; color: #e8effa; font-family: system-ui, sans-serif; }
@@ -23,6 +24,7 @@
   <div id="error" role="alert"></div>
   <script src="coach-policy.js"></script>
   <script src="coach.js"></script>
+  <script src="astrabot-control.js"></script>
   <script>
     const canvas = document.getElementById("unity-canvas");
     const assetBaseUrl = new URL("./", window.location.href);
@@ -50,6 +52,7 @@
     }).then(instance => {
       window.unityInstance = instance;
       window.astraCoach.ready(instance);
+      window.astraBotControl.ready(instance);
       document.getElementById("loading").remove();
       canvas.focus();
     }).catch(error => {

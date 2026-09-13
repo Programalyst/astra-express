@@ -53,9 +53,45 @@ namespace AstraExpress
             public bool parkRequested, waitingForFuelSpace;
             public CoachPoint position, source, destination;
         }
+        [Serializable] private sealed class CoachAnchor
+        {
+            public string id, label;
+            public float x, y, width, height;
+            public bool visible = true;
+        }
+        private CoachAnchor[] CoachAnchors()
+        {
+            var anchors = new List<CoachAnchor>();
+            void Add(string id, string label, Rect rect) => anchors.Add(new CoachAnchor { id = id, label = label, x = rect.x / UiWidth, y = rect.y / UiHeight, width = rect.width / UiWidth, height = rect.height / UiHeight });
+            string[] names = { "explore", "extractor", "solar", "conduit", "rail", "plant" };
+            for (int i = 0; i < names.Length; i++) Add("tool-" + names[i], names[i], new Rect(28 + i * 147, UiHeight - 75, 139, 44));
+            Add("fleet", "Fleet", new Rect(910, UiHeight - 75, 139, 44));
+            Add("pause", Simulation.Paused ? "Resume" : "Pause", new Rect(UiWidth - 214, 17, 92, 36));
+            if (trainSelected) {
+                Add("buy-train", "Buy train", new Rect(Sidebar.x + 18, 397, Sidebar.width - 36, 32));
+                Add("train-park", "Park at colony", new Rect(Sidebar.x + 18, 319, Sidebar.width - 36, 32));
+                Add("train-capacity", "Upgrade capacity", new Rect(Sidebar.x + 18, 358, Sidebar.width - 36, 32));
+                Add("train-next", "Next locomotive", new Rect(Sidebar.xMax - 66, 180, 48, 27));
+            }
+            else if (selected != null && selected.Kind == StructureKind.Extractor)
+            {
+                Add("primary-action", "Mine action", new Rect(Sidebar.x + 18, 356, Sidebar.width - 36, 36));
+                Add("mine-pause", selected.Paused ? "Resume mine" : "Pause mine", new Rect(Sidebar.x + 18, 416, 112, 34));
+                if (selected.Deposit.Resource == ResourceKind.Fluxite) Add("fuel-destination", "Choose fuel destination", new Rect(Sidebar.x + 18, 324, Sidebar.width - 36, 26));
+            }
+            else if (selected != null && selected.Kind == StructureKind.PowerPlant) {
+                bool needsLink = !selected.Connected || Simulation.RailRoute(selected) == null;
+                Add("plant-pause", selected.Paused ? "Resume plant" : "Pause plant", new Rect(Sidebar.x + 18, 312 + (needsLink ? 39 : 0), Sidebar.width - 36, 32));
+            }
+            return anchors.ToArray();
+        }
         [Serializable] private sealed class CoachState
         {
             public string session, tool, message, selectedKind, trainPhase, placementReason;
+            public string botActionId, botActionStatus, botActionMessage;
+            public bool botBusy, pickingTile, hasPickedTile;
+            public CoachPoint pickedTile, botTarget;
+            public CoachAnchor[] uiAnchors;
             public int credits, produced, sold, deliveries, capacity, capacityLevel, cargo;
             public int selectedTrainIndex, idleTrains, trainCount, maxTrains, trainCost, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
             public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy;
@@ -67,7 +103,7 @@ namespace AstraExpress
         }
         private void ResetCoach() { coachSession = Guid.NewGuid().ToString("N"); coachTimer = 1; }
 
-        // These methods only control coaching UI/camera; the guide never plays for the user.
+        // Coaching UI and camera methods; opt-in game control is isolated in AstraBotControl.
         public void CoachSetInputBlocked(string value)
         {
             if (value == "2") coachInputResumeFrame = Time.frameCount + 1;
@@ -206,6 +242,9 @@ namespace AstraExpress
             var currentDestination = CoachFuelDestination(selected);
             var state = new CoachState {
                 session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(),
+                botActionId = botActionId, botActionStatus = botActionStatus, botActionMessage = botActionMessage, botBusy = botBusy, pickingTile = pickingTile, hasPickedTile = pickedTile.HasValue,
+                pickedTile = pickedTile.HasValue ? CoachPosition(pickedTile.Value) : null,
+                botTarget = botTarget.HasValue ? CoachPosition(botTarget.Value) : null, uiAnchors = CoachAnchors(),
                 credits = Simulation.Credits, battery = Simulation.Battery, generation = Simulation.Generation, demand = Simulation.Demand,
                 produced = Simulation.Produced, sold = Simulation.Sold, deliveries = Simulation.Deliveries, paused = Simulation.Paused,
                 rover = CoachPosition(Simulation.RoverCell), roverMoving = Simulation.RoverMoving,

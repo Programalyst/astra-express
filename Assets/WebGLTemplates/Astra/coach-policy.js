@@ -50,7 +50,7 @@
       `${rail ? b.kind === "PowerPlant" ? "Connect this plant to the rail network so Fluxite can reach it." : isFuel(b) ? "Connect this Fluxite extractor to the colony depot rails, then its plant destination." : "Link the ports with tracks so the train can collect ore." : b.kind === "Solar" ? "Connect this solar array’s outlined port tile to the colony." : b.kind === "PowerPlant" ? "Connect this plant to the colony power grid; it also needs delivered Fluxite to generate power." : "The extractor is placed. Connect its outlined port tile to the colony to power it."} The translucent path is a suggestion. Remaining route: ${route.cost} credits.`,
       steps, route.stops[started ? segment + 1 : segment]), link:{tool:rail ? "Rail" : "Conduit", origin:b.origin} };
   }
-  function advise(s) {
+  function baseAdvice(s) {
     if (!s) return [];
     if (s.paused) return [tip("resume", "Pick up where you left off", "Your colony is paused. Buildings and vehicles will continue when you resume.", ["Click the game, then press Space, or use Resume in the top bar."])];
     const mines = (s.buildings || []).filter(b => b.kind === "Extractor");
@@ -122,7 +122,7 @@
       if (blocked) return [tip(`mine-blocked-${blocked.origin.x}-${blocked.origin.y}`, "Clear the way for an extractor", blocked.reason,
         blocked.reason.includes("occupied") ? ["Press 1 and move the rover away from the ore patch.", "Try Extractor again when the footprint is clear."] : ["Check the placement message above the toolbar.", "Explore the patch and its south port; an extractor needs the full footprint."], blocked.origin)];
       if (s.roverMoving) return [tip("exploring", "Your rover is opening the frontier", "The rover reveals nearby ground as it travels. Let it reach the edge of the fog.", ["Watch for an orange ore patch to appear.", "Press V any time to centre the rover."], s.rover)];
-      return [tip("explore", "Let's find your first ore patch", "I'm Pip, your colony copilot. Start with a short trip to the edge of the explored ground.",
+      return [tip("explore", "Let's find your first ore patch", "I'm AstraBot, your colony copilot. Start with a short trip to the edge of the explored ground.",
         ["Press 1 for Explore.", "Click clear ground near the edge of the fog to move the rover.", "Orange ore appears when the rover gets close enough."], s.frontier)];
     }
     const waiting = fleet.trains.find(t => t.waitingForFuelSpace);
@@ -138,7 +138,7 @@
     const options = [];
     if (s.generation <= s.demand && s.solarSite && s.credits >= 100) options.push(tip("expand-power", "Make room for more power", "Another connected solar array adds 2 power/s and gives your mines room to grow.", ["Press 3 for Solar and use this clear 2 × 2 footprint.", "Spend 100 credits to place it, then wire its south port with Conduit."], s.solarSite));
     const upgrade = fleet.trains.find(t => t.index === s.selectedTrainIndex && t.capacityLevel < 3) || fleet.trains.find(t => t.capacityLevel < 3 && t.resource !== "Fluxite");
-    if (upgrade && s.credits >= upgrade.capacityLevel * 100) options.push(tip("upgrade-train", "Carry more on each trip", `Locomotive ${upgrade.index + 1} holds ${upgrade.capacity} cargo. Another 4 slots cost ${upgrade.capacityLevel * 100} credits; this upgrades that train only.`, ["Open Fleet on the bottom toolbar.", `Select locomotive ${upgrade.index + 1}, then choose Capacity +4 / ${upgrade.capacityLevel * 100} cr.`]));
+    if (upgrade && s.credits >= upgrade.capacityLevel * 100) options.push({...tip("upgrade-train", "Carry more on each trip", `Locomotive ${upgrade.index + 1} holds ${upgrade.capacity} cargo. Another 4 slots cost ${upgrade.capacityLevel * 100} credits; this upgrades that train only.`, ["Open Fleet on the bottom toolbar.", `Select locomotive ${upgrade.index + 1}, then choose Capacity +4 / ${upgrade.capacityLevel * 100} cr.`]), trainIndex:upgrade.index});
     const nextDeposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && s.credits >= d.cost) || (s.deposits || []).find(d => d.buildable && s.credits >= d.cost);
     if (nextDeposit) options.unshift(tip(`expand-mine-${nextDeposit.origin.x}-${nextDeposit.origin.y}`, isFuel(nextDeposit) ? "You found Fluxite fuel" : "You found another ore patch",
       isFuel(nextDeposit) ? `An extractor costs ${nextDeposit.cost} credits. Fluxite must be hauled to a connected power plant; it generates power and is never sold.` : `An extractor here costs ${nextDeposit.cost} credits. It needs power, rails and an idle locomotive. Buy another in Fleet when needed, up to ${fleet.max} total.`,
@@ -148,6 +148,45 @@
       ["Press 1 and send the rover to the edge of the fog.", "Larger deposits need more credits, space, power, and their own rail connection."], s.frontier));
     return options.slice(0, 3);
   }
+  function withCue(s, t) {
+    let uiTarget = null, cueLabel = "", targetLabel = "Look here";
+    const selectBuilding = (button, label) => {
+      targetLabel = "Select this building";
+      if (!s.trainSelected && same(s.selected, t.target)) { uiTarget = button; cueLabel = label; }
+      else if (s.tool !== "Explore") { uiTarget = "tool-explore"; cueLabel = "Choose 1 · Explore, then select the building"; }
+    };
+    const chooseTool = (tool, number, label) => {
+      targetLabel = label;
+      if (s.tool !== tool) { uiTarget = "tool-" + (tool === "PowerPlant" ? "plant" : tool.toLowerCase()); cueLabel = `Choose ${number} · ${tool === "PowerPlant" ? "Plant" : tool}`; }
+    };
+    if (t.id === "resume") { uiTarget = "pause"; cueLabel = "Resume your colony"; }
+    else if (t.link) {
+      chooseTool(t.link.tool, t.link.tool === "Rail" ? 5 : 4, "Click the highlighted port or marker");
+      if (s.tool === t.link.tool && !s.routeStarted) t = {...t, steps:t.steps.slice(1)};
+      targetLabel = t.steps[s.tool === t.link.tool ? 0 : 1] || targetLabel;
+    }
+    else if (/^dispatch-/.test(t.id)) {
+      selectBuilding("primary-action", "Click Dispatch idle train");
+      if (uiTarget === "primary-action") t = {...t, steps:t.steps.filter(step => !step.startsWith("Press 1"))};
+    }
+    else if (/^(power-low-|resume-mine-)/.test(t.id)) selectBuilding("mine-pause", t.id.startsWith("power-low-") ? "Pause this mine so the battery can recover" : "Resume this mine");
+    else if (t.id === "resume-plant") selectBuilding("plant-pause", "Resume this power plant");
+    else if (/^choose-plant-/.test(t.id)) selectBuilding("fuel-destination", "Choose the plant that should receive this fuel");
+    else if (/^buy-train-/.test(t.id)) { uiTarget = s.trainSelected ? "buy-train" : "fleet"; cueLabel = s.trainSelected ? `Buy train / ${s.trainCost ?? 150} cr` : "Open Fleet to add a locomotive"; }
+    else if (/^switch-mine-/.test(t.id)) { uiTarget = s.trainSelected ? "train-park" : "fleet"; cueLabel = s.trainSelected ? "Park this service before reassigning it" : "Open Fleet and choose a service to park"; }
+    else if (t.id === "upgrade-train") {
+      uiTarget = !s.trainSelected ? "fleet" : (s.selectedTrainIndex ?? 0) === t.trainIndex ? "train-capacity" : "train-next";
+      cueLabel = uiTarget === "train-capacity" ? "Upgrade the selected locomotive's capacity" : `Select locomotive ${t.trainIndex + 1} in Fleet`;
+    }
+    else if (/^(extractor-\d|expand-mine-|fuel-extractor-)/.test(t.id)) chooseTool("Extractor", 2, "Click this revealed patch to place the extractor");
+    else if (t.id === "expand-power") chooseTool("Solar", 3, "Place the solar array on this clear footprint");
+    else if (t.id === "build-plant") chooseTool("PowerPlant", 6, "Place the power plant on this clear footprint");
+    else if (["explore", "expand-frontier", "find-fuel", "plant-needed"].includes(t.id)) chooseTool("Explore", 1, "Click here to send the rover toward unexplored ground");
+    // Only expose real controls from the current Unity sidebar and toolbar.
+    if (!s.uiAnchors?.some(anchor => anchor.id === uiTarget && anchor.visible !== false)) uiTarget = null;
+    return {...t, uiTarget, cueLabel, targetLabel};
+  }
+  function advise(s) { return s ? baseAdvice(s).map(t => withCue(s, t)) : []; }
   function signature(s, options) {
     // Deliveries must not erase an answer while the player reads it. Candidate changes
     // still invalidate newly affordable actions; purchases and link edits remain strategic.
@@ -158,7 +197,7 @@
       (s.buildings || []).map(b => [b.origin.x,b.origin.y,b.connected,b.railConnected,b.paused,b.level,b.served,b.resource,b.destination?.x,b.destination?.y,b.destinationRailConnected,
         b.kind === "PowerPlant" && [b.stock === 0,b.stock >= b.storage],
         ...[b.powerRoute,b.railRoute,b.destinationRailRoute].map(r => r && [r.possible,r.cost,r.nextSegment,(r.stops || []).map(p => [p.x,p.y])])]),
-      options.map(o => [o.id,o.steps,o.target?.x,o.target?.y]), s.placementReason]);
+      options.map(o => [o.id,o.steps,o.target?.x,o.target?.y,o.uiTarget]), s.placementReason]);
   }
   const api = { advise, signature };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

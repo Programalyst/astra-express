@@ -1,0 +1,18 @@
+#astrabot-task[hidden]{display:none!important}
+#astrabot-task{position:fixed;z-index:55;left:120px;bottom:142px;width:440px;max-width:calc(100vw - 32px);max-height:calc(100vh - 105px);overflow:auto;color:#e9f8f3;background:linear-gradient(145deg,#122e38,#11232e);border:1px solid #4a7a7a;border-radius:18px;box-shadow:0 15px 45px #03121ca6;padding:18px;font:14px/1.45 system-ui,sans-serif}
+#astrabot-task header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+#astrabot-task header strong{font-size:21px;color:#c5ffeb}#astrabot-task header small{margin-left:12px;letter-spacing:.16em;color:#88bcb9;font-size:10px}
+#astrabot-task button{background:#234a54;color:#e2fff5;border:1px solid #527a7d;border-radius:9px;padding:9px 13px;cursor:pointer;font:600 13px system-ui,sans-serif}
+#astrabot-task button:hover{background:#32636a}#astrabot-task button:focus-visible,#astrabot-task textarea:focus-visible{outline:2px solid #ffc977;outline-offset:3px}
+#astrabot-task button:disabled{opacity:.5;cursor:wait}#astrabot-task p{font:13px/1.45 system-ui,sans-serif;color:#b8d5d6;margin:8px 0}
+#bot-goal{width:100%;resize:vertical;min-height:78px;max-height:150px;background:#0c2029;border:1px solid #45666e;border-radius:10px;color:#e6fff7;font:14px/1.4 system-ui,sans-serif;padding:11px}
+.bot-target-row{display:flex;align-items:center;gap:10px;margin:8px 0}.bot-target-row span{color:#a5d3c8;font-size:12px}
+.bot-presets{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0}#astrabot-task .bot-presets button{font-size:11px;padding:6px 8px;background:#193b45}
+#astrabot-task #bot-plan,#astrabot-task #bot-start{background:#b7f1d4;color:#12352e;border-color:#c5ffe4}#bot-plan{width:100%}
+#bot-plan-body h3{margin:14px 0 4px;font-size:17px}#bot-actions{padding-left:22px;margin:10px 0}#bot-actions li{padding:4px 0;color:#bcd5d7;font-size:13px}
+#bot-actions li[data-state=active]{color:#ffd394}#bot-actions li[data-state=done]{color:#95e6bc}#bot-actions li[data-state=done]::after{content:' ✓'}#bot-actions li[data-state=failed]{color:#ffb3a2}
+#astrabot-task #bot-status{border-top:1px solid #38545f;padding-top:9px;color:#d6e5df}#astrabot-task footer{display:flex;gap:8px;margin-top:10px}
+#astrabot-task #bot-stop{background:#714137;border-color:#ad7564;color:#ffebe1}.bot-scope{display:block;margin-top:10px;font-size:10px;color:#8dafb5}
+#astrabot-task.compact{left:50%;top:82px;bottom:auto;transform:translateX(-50%);width:460px;padding:10px 15px;border-radius:12px;max-height:150px}
+#astrabot-task.compact header,#astrabot-task.compact #bot-plan-body,#astrabot-task.compact .bot-scope{display:none}#astrabot-task.compact #bot-status{border:0;padding:0;margin:0;color:#d5f2e6}#astrabot-task.compact footer{margin-top:8px}
+@media(max-width:700px){#astrabot-task{left:16px;bottom:110px;width:calc(100vw - 32px);padding:13px}#astrabot-task.compact{left:50%;width:calc(100vw - 32px)}}

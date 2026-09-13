@@ -165,6 +165,12 @@ namespace AstraExpress
             if (changed) RevealRevision++;
         }
 
+        public void StopRover()
+        {
+            roverRoute.Clear();
+            roverWaypoint = 0;
+        }
+
         public bool OrderRover(Cell destination)
         {
             if (!Terrain.Walkable(destination) || StructureAt(destination) != null) return Fail("The rover needs clear ground. Use the marked ramps to reach the plateau; hillsides are impassable.");

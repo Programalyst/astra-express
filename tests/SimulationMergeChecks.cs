@@ -86,6 +86,21 @@ class Review
         Console.WriteLine("PASS terrainScenarioAssertions=" + (scenarioChecks - before));
     }
 
+    static void RoverStopChecks()
+    {
+        var sim = new ColonySimulation();
+        sim.Reveal(14, 11, 100);
+        Reach(sim, new Cell(16, 5));
+        Check(sim.OrderRover(new Cell(18, 5)), "Start rover crossing for cancellation");
+        Advance(sim, .5f);
+        Check(sim.RoverMoving && sim.RoverX > 16.5f && sim.RoverX < 17.5f, "Cancel while rover is partway up a ramp");
+        float x = sim.RoverX, y = sim.RoverY;
+        sim.StopRover();
+        Advance(sim, 2);
+        Check(!sim.RoverMoving && sim.RoverX == x && sim.RoverY == y, "StopRover immediately cancels movement without snapping position");
+        Reach(sim, new Cell(18, 5));
+    }
+
     static void Main()
     {
         var sim=new ColonySimulation(); sim.Reveal(14,11,100);
@@ -103,6 +118,7 @@ class Review
         Check(sim.Train.Phase==TrainPhase.ToColony && sim.Train.Cargo>0,"Ore train carries cargo before parking");int soldAtPark=sim.Sold;int oreCargo=sim.Train.Cargo;sim.ParkTrain(sim.Train);Advance(sim,30);Check(sim.Train.Phase==TrainPhase.Parked && sim.Train.Cargo==0,"Ore train parks after unloading");Check(sim.Sold-soldAtPark>=oreCargo,"Parking ore cargo sold");Check(second.Source==fuel && !second.ParkRequested,"Fuel service unchanged by parking ore train");
         Check(sim.BuyTrain(),"Buy third train");Check(sim.BuyTrain(),"Buy fourth train");int maxCredits=sim.Credits;Check(!sim.BuyTrain(),"Fifth train rejected");Check(sim.Trains.Count==4 && sim.Credits==maxCredits,"Fleet limit preserves money");
         TerrainChecks(sim);
+        RoverStopChecks();
         Console.WriteLine("PASS scenarioAssertions="+scenarioChecks+" invariantAssertions="+invariantChecks+" timeSteps="+timeSteps+" sold="+sim.Sold+" ore="+sim.AccountedOre+"/"+sim.Produced+" fuel="+sim.AccountedFuel+"/"+sim.FuelProduced+" delivered="+sim.FuelDelivered+" consumed="+sim.FuelConsumed+" battery="+sim.Battery);
     }
 }

@@ -137,6 +137,7 @@ namespace AstraExpress
 
         private void ResetWorld()
         {
+            ResetBotControl();
             ResetCoach();
             ResetLinkGuide();
             if (worldRoot != null) Destroy(worldRoot.gameObject);
@@ -171,6 +172,7 @@ namespace AstraExpress
             preview.widthMultiplier = 0.09f;
             preview.positionCount = 0;
             preview.shadowCastingMode = ShadowCastingMode.Off;
+            InitializeFogVisuals();
             SyncWorld();
         }
 
@@ -274,6 +276,7 @@ namespace AstraExpress
             HandleInput();
             Simulation.Step(Time.deltaTime);
             SyncWorld();
+            UpdateFogVisuals();
             UpdatePowerVisuals();
             UpdateLinkGuide();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
@@ -314,6 +317,7 @@ namespace AstraExpress
                 revealRevision = Simulation.RevealRevision;
                 foreach (var pair in ground) pair.Value.SetRevealed(Simulation.IsRevealed(pair.Key));
                 foreach (var pair in ore) pair.Value.SetActive(Simulation.IsRevealed(pair.Key) && Simulation.DepositAt(pair.Key).Extractor == null);
+                SyncFogVisuals();
             }
             if (Simulation.Revision == revision) return;
             revision = Simulation.Revision;
@@ -398,7 +402,8 @@ namespace AstraExpress
 
         private void HandleInput()
         {
-            if (coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
+            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && (botBusy || pickingTile)) { CoachBotStop("Escape"); return; }
+            if (botBusy || coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
             var mouse = Mouse.current;
             var keyboard = Keyboard.current;
             if (mouse == null) return;
@@ -444,6 +449,11 @@ namespace AstraExpress
                 break;
             }
             if (mouse.rightButton.wasPressedThisFrame) { routeStart = null; tool = Tool.Explore; }
+            if (pickingTile)
+            {
+                if (mouse.leftButton.wasPressedThisFrame && hover.HasValue) { pickedTile = hover; pickingTile = false; coachTimer = 1; }
+                return;
+            }
             if (!mouse.leftButton.wasPressedThisFrame || !hover.HasValue || Simulation.Paused) return;
             Cell target = hover.Value;
             if (tool == Tool.Explore)
@@ -523,7 +533,7 @@ namespace AstraExpress
         private void OnGUI()
         {
             if (Simulation == null) return;
-            if ((coachInputBlocked || Time.frameCount <= coachInputResumeFrame) && (Event.current.isMouse || Event.current.isKey || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
+            if ((botBusy || pickingTile || coachInputBlocked || Time.frameCount <= coachInputResumeFrame) && (Event.current.isMouse || Event.current.isKey || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
             Styles();
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * UiScale);
             DrawWorldLabels();
@@ -547,6 +557,7 @@ namespace AstraExpress
             DrawSelection();
             DrawToolbar();
             DrawLinkGuide();
+            DrawBotTarget();
             if (Simulation.Paused)
             {
                 Panel(new Rect(UiWidth / 2 - 180, UiHeight / 2 - 65, 360, 122));
@@ -763,6 +774,7 @@ namespace AstraExpress
 
         private void OnDestroy()
         {
+            DisposeFogVisuals();
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             foreach (var material in ownedMaterials) if (material != null) Destroy(material);
         }

@@ -18,9 +18,9 @@
 #coach-close .coach-button-art { width:17px; height:17px; }
 #coach button:focus-visible,#coach input:focus-visible { outline:2px solid var(--mint); outline-offset:4px; }
 #coach-launcher { pointer-events:auto; display:flex; align-items:center; gap:9px; padding:0; background:none; color:var(--ink); border:0; text-align:left; }
-.pip-avatar { display:block; width:70px; height:76px; overflow:visible; filter:drop-shadow(0 8px 13px #0008); flex-shrink:0; }
-.pip-float { animation:pip-hover 5s ease-in-out infinite; transform-origin:center; }
-.pip-eye { animation:pip-blink 7s infinite; transform-box:fill-box; transform-origin:center; }
+.astrabot-avatar { display:block; width:70px; height:76px; overflow:visible; filter:drop-shadow(0 8px 13px #0008); flex-shrink:0; }
+.astrabot-float { animation:astrabot-hover 5s ease-in-out infinite; transform-origin:center; }
+.astrabot-eye { animation:astrabot-blink 7s infinite; transform-box:fill-box; transform-origin:center; }
 .coach-teaser { max-width:195px; padding:8px 13px; border:1px solid #99ead52b; border-radius:12px 12px 12px 2px; background:#122830ed; box-shadow:0 5px 25px #0003; }
 .coach-teaser strong { display:block; color:var(--mint); font-size:10px; letter-spacing:.13em; }
 .coach-teaser span { display:block; font-size:12px; line-height:1.4; }
@@ -48,6 +48,8 @@
 .coach-actions button { border-radius:8px; padding:7px 12px; border:1px solid #8acabb30; background:transparent; color:#b6d1d1; font-size:12px!important; }
 .coach-actions button:first-child { background:var(--mint); color:#12332e; border-color:transparent; font-weight:650!important; }
 .coach-actions button:disabled { opacity:.5; cursor:default; }
+.coach-task { display:flex; justify-content:center; align-items:center; gap:7px; width:100%; margin-top:8px; padding:6px 10px; border:1px solid #eecb8e38; border-radius:8px; background:#eecb8e09; color:#ead6b3; font-size:11px!important; }
+.coach-task:hover { background:#eecb8e18; border-color:#eecb8e75; }
 #coach-form { display:flex; gap:6px; margin-top:13px; padding-top:12px; border-top:1px solid #d2fff015; }
 #coach-question { flex:1; min-width:0; border:1px solid #98dac629; background:#061b2466; color:#eaf5f3; border-radius:7px; padding:8px 9px; font-size:12px!important; }
 #coach-question::placeholder { color:#78989e; }
@@ -56,9 +58,19 @@
 .coach-footer label { display:flex; align-items:center; gap:5px; cursor:pointer; }
 #coach-live { accent-color:#87dcc7; margin:0; }
 #coach-status { text-align:right; max-width:190px; }
-#coach-spotlight { position:fixed; z-index:19; border:2px solid #c0ffce; width:48px; height:48px; transform:translate(-50%,-50%); border-radius:50%; pointer-events:none; box-shadow:0 0 0 6px #93ead51a,0 0 20px #8cddbb60; }
-#coach-spotlight span { position:absolute; top:53px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; background:#10282ff2; color:#c6efdf; padding:4px 8px; border-radius:5px; }
-@keyframes pip-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
-@keyframes pip-blink { 0%,43%,47%,100%{transform:scaleY(1)} 45%{transform:scaleY(.12)} }
-@media (max-height:650px) { #coach-panel{bottom:64px;max-height:calc(100vh - 195px)} .pip-avatar{width:54px;height:58px} .coach-body{padding:11px 15px} #coach-steps{gap:6px} #coach-form{margin-top:8px;padding-top:8px} }
-@media (prefers-reduced-motion:reduce) { #coach-panel,.coach-teaser { transition:none; } .pip-float,.pip-eye { animation:none; } }
+#coach-spotlight { position:fixed; z-index:19; pointer-events:none; font:12px/1.4 system-ui,sans-serif; }
+#coach-spotlight[hidden] { display:none!important; }
+.coach-cue-frame { position:absolute; inset:0; border:2px solid #b1f5d9; border-radius:9px; box-shadow:0 0 0 3px #0b232ccd,0 0 12px #93ead552; animation:astrabot-cue 2s ease-in-out infinite; }
+.coach-cue-frame::before,.coach-cue-frame::after { content:""; position:absolute; background:#f7dfaa; border-radius:2px; }
+.coach-cue-frame::before { left:-6px; top:calc(50% - 1px); width:12px; height:2px; }
+.coach-cue-frame::after { right:-6px; top:calc(50% - 1px); width:12px; height:2px; }
+#coach-spotlight[data-kind="world"] .coach-cue-frame { border-radius:50%; }
+.coach-cue-hint { position:fixed; display:flex; align-items:center; gap:8px; width:max-content; max-width:min(290px,calc(100vw - 16px)); padding:7px 8px 7px 11px; border:1px solid #b1f5d961; border-radius:9px; background:#10282ff5; color:#e5f6ed; box-shadow:0 4px 18px #0006; }
+#coach-cue-text { min-width:0; }
+#coach-cue-close { pointer-events:auto; flex:none; width:24px; height:24px; padding:0; border:0; border-radius:5px; background:#e5f6ed12; color:#c3ded6; font:18px/1 system-ui,sans-serif; cursor:pointer; }
+#coach-cue-close:hover,#coach-cue-close:focus-visible { background:#e5f6ed30; outline:1px solid #b1f5d9; }
+@keyframes astrabot-cue { 0%,100% { border-color:#83c8b8; } 50% { border-color:#d1ffe6; } }
+@keyframes astrabot-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+@keyframes astrabot-blink { 0%,43%,47%,100%{transform:scaleY(1)} 45%{transform:scaleY(.12)} }
+@media (max-height:650px) { #coach-panel{bottom:64px;max-height:calc(100vh - 195px)} .astrabot-avatar{width:54px;height:58px} .coach-body{padding:11px 15px} #coach-steps{gap:6px} #coach-form{margin-top:8px;padding-top:8px} }
+@media (prefers-reduced-motion:reduce) { #coach-panel,.coach-teaser { transition:none; } .astrabot-float,.astrabot-eye,.coach-cue-frame { animation:none; } }

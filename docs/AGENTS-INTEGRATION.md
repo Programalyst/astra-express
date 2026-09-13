@@ -1,14 +1,16 @@
-# Pip: hosted Agents API integration
+# AstraBot: hosted Agents API integration
 
-Pip's server now uses the **hosted OpenAI Agents API**. The previous implementation made individual `POST /v1/responses` calls and did not use Agents. This is not a rename or an Agents SDK wrapper: the transport creates managed sessions at `/v1/agents/sessions`, submits later messages to each session's events endpoint, and consumes its event stream. It retains the configured `gpt-5.4-mini` model. No new Python dependencies are required.
+AstraBot's server now uses the **hosted OpenAI Agents API**. The previous implementation made individual `POST /v1/responses` calls and did not use Agents. This is not a rename or an Agents SDK wrapper: the transport creates managed sessions at `/v1/agents/sessions`, submits later messages to each session's events endpoint, and consumes its event stream. It retains the configured `gpt-5.4-mini` model. No new Python dependencies are required.
 
 The API distinctions and supported hosted session configuration are described in the [OpenAI Agents API overview](https://developers.openai.com/api/docs/guides/agents-api/overview) and [session creation reference](https://developers.openai.com/api/reference/python/resources/beta/subresources/agents/subresources/sessions/methods/create).
 
-## Runtime contract
+## Coaching runtime contract
+
+This section describes the advisory **Show me** flow. The separate opt-in **Plan → Start plan** flow uses the same hosted transport, authentication and cleanup, with a different structured plan schema and game-scoped executor. It is documented in [ASTRABOT-PLANNER.md](ASTRABOT-PLANNER.md). Planning alone cannot operate the game; the browser starts execution only through its plan controls.
 
 - The browser submits a current JPEG, visible game state, up to eight recent events, the player's question, and one to three validated action candidates. It continues to own the exact controls and steps.
 - The server adds fixed coaching rules. Instructions explicitly distinguish extractor placement from production: the extractor also needs power, energy, storage, ore and an unpaused simulation. The latest frame supersedes earlier frames.
-- Each game gets an inline agent configuration and a managed conversation. The agent has no tools, no subagents and `environment: {type: "none"}`. It can explain one candidate; it cannot spend credits or operate the game.
+- Each game gets an inline agent configuration and a managed conversation. The agent has no tools, no subagents and `environment: {type: "none"}`. In advisory coaching it explains one candidate and cannot spend credits or operate the game. Only a separately started action plan reaches the game executor.
 - Structured output contains only `actionId`, `title`, `body`, and `observation`. The fixed session schema cannot use a different action enum every frame, so the server rejects any ID absent from the **current request's** candidates. Extra fields, replacement steps, empty/oversized text and invalid JSON are rejected too.
 - A final assistant item must belong to the same completed root turn. Idle status, an incomplete stream, commentary, or a failed turn never counts as success. For follow-up inputs, the server opens the event stream before submitting the message. The [events guide](https://developers.openai.com/api/docs/guides/agents-api/sessions/events) explains these lifecycle requirements.
 
@@ -16,11 +18,11 @@ The API distinctions and supported hosted session configuration are described in
 
 The existing single-request concurrency slot, 4-second server minimum and 120-request hourly limit remain. The browser normally waits at least 12 seconds between frames. A turn has a 20-second deadline across connection, submission and reading; failure retires its session and attempts one deletion with a 3-second timeout. Other cleanup runs separately. No retry automatically generates a duplicate turn, and uncertain/failed turns are not reused.
 
-At most four game conversations are kept. Each is retired after eight successful frames, ten minutes total, two minutes without a new successful frame, or a key/model change. A maintenance thread checks every 15 seconds. It deletes retired sessions; failed deletions stay queued and increment `cleanupFailures`. A persistent, private, ignored `Logs/coach-agent-sessions.json` stores **session IDs only**, allowing the next server process to retry cleanup after a crash. It contains no images, questions, state or API key. A clean SIGTERM/Control-C exit retires sessions too.
+At most four hosted conversations are kept across advisory coaching and planner goals; the two flows never share a conversation. Each is retired after eight successful frames, ten minutes total, two minutes without a new successful frame, or a key/model change. A maintenance thread checks every 15 seconds. It deletes retired sessions; failed deletions stay queued and increment `cleanupFailures`. A persistent, private, ignored `Logs/coach-agent-sessions.json` stores **session IDs only**, allowing the next server process to retry cleanup after a crash. It contains no images, questions, state or API key. A clean SIGTERM/Control-C exit retires sessions too.
 
 **Retention changed from the previous `store:false` Responses call.** The Agents API stores conversation state, including submitted game screenshots. It is not a Zero Data Retention integration. API deletion removes session availability while physical cleanup may continue asynchronously. See the [Agents API retention note](https://developers.openai.com/api/docs/guides/agents-api/overview) and [session deletion guide](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage). Local cleanup is best effort during outages; an abrupt loss before the initial session ID arrives cannot be tracked locally. API-level retention controls still apply.
 
-The server key stays in private, git-ignored `server/.env` and is never sent to the browser. Both secrets and cleanup records are outside the static web root. Raw upstream errors, screenshots and questions are not logged. The config endpoint reports `engine: "agents-api"` and aggregate counters without credentials or hosted session IDs. If the API is unavailable, the client receives an explicit failure and keeps its local game-state tip; there is no silent raw-Responses fallback.
+The server key stays in private, git-ignored `server/.env` and is never sent to the browser. Both secrets and cleanup records are outside the static web root. Raw upstream errors, screenshots and questions are not logged. The config endpoint reports `engine: "agents-api"` and aggregate counters without credentials or hosted session IDs. If the API is unavailable, the client receives an explicit failure and keeps its local game-state tip; planner failures return no executable plan. There is no silent raw-Responses fallback.
 
 ## Verification
 

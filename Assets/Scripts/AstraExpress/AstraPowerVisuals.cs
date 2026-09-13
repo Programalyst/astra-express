@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AstraExpress
@@ -7,11 +8,40 @@ namespace AstraExpress
         // Keep power alongside the rails, with a separate jumper into each building.
         private static readonly Vector3 PowerLaneOffset = new Vector3(0.66f, 0.16f, 0.66f);
         private Material disconnectedPortMaterial;
+        private Material powerFlowMaterial;
+        private bool powerFlowShaderChecked;
+        private float powerFlowTime;
+        private float nextPowerFlowRefresh;
+        private readonly List<PowerFlowSegment> powerFlowSegments = new List<PowerFlowSegment>();
+        private readonly Dictionary<Cell, int> powerSourceDistances = new Dictionary<Cell, int>();
+        private readonly HashSet<Cell> powerSourcePorts = new HashSet<Cell>();
+        private readonly MaterialPropertyBlock powerFlowProperties = new MaterialPropertyBlock();
+        private static readonly int FlowLengthId = Shader.PropertyToID("_FlowLength");
+        private static readonly int FlowOffsetId = Shader.PropertyToID("_FlowOffset");
+        private static readonly int FlowDirectionId = Shader.PropertyToID("_FlowDirection");
+        private static readonly int FlowAmountId = Shader.PropertyToID("_FlowAmount");
+        private static readonly int FlowTimeId = Shader.PropertyToID("_FlowTime");
+        private static readonly int PowerAvailableId = Shader.PropertyToID("_PowerAvailable");
+
+        private sealed class PowerFlowSegment
+        {
+            public Renderer Renderer;
+            public Cell From;
+            public Cell To;
+            public Structure Building;
+            public float Length;
+            public float Offset;
+            public float Direction = float.NaN;
+            public float Amount = float.NaN;
+        }
 
         private void DrawPowerNetwork()
         {
             if (disconnectedPortMaterial == null)
                 disconnectedPortMaterial = MakeMaterial(gold, 0.25f);
+            EnsurePowerFlowMaterial();
+            // SyncWorld replaces the network hierarchy; retain no stale renderers.
+            powerFlowSegments.Clear();
 
             foreach (var cell in Simulation.Conduits)
             {
@@ -27,6 +57,19 @@ namespace AstraExpress
             }
 
             foreach (var structure in Simulation.Structures) DrawBuildingConnection(structure);
+            RefreshPowerFlow();
+        }
+
+        private void EnsurePowerFlowMaterial()
+        {
+            if (powerFlowShaderChecked) return;
+            powerFlowShaderChecked = true;
+            darkPowerMaterial.SetColor("_BaseColor", new Color(0.055f, 0.095f, 0.12f));
+            // Resources keeps the shader in the WebGL player even without a scene material.
+            var shader = Resources.Load<Shader>("Rendering/AstraPowerFlow");
+            if (shader == null || !shader.isSupported) return;
+            powerFlowMaterial = new Material(shader) { name = "Live conduit power flow" };
+            ownedMaterials.Add(powerFlowMaterial);
         }
 
         private Vector3 PowerNode(Cell cell) => Position(cell.X + PowerLaneOffset.x / 2,
@@ -48,6 +91,7 @@ namespace AstraExpress
         private void DrawSurfacePowerCable(Cell from, Cell to, bool connected)
         {
             Vector3 previous = PowerNode(from);
+            float offset = 0;
             float start = from.X + PowerLaneOffset.x / 2;
             float end = to.X + PowerLaneOffset.x / 2;
             // Network edges are drawn east or north only. Split at the tile edges
@@ -56,13 +100,15 @@ namespace AstraExpress
                 for (float boundary = Mathf.Floor(start + 0.5f) + 0.5f; boundary < end; boundary++)
                 {
                     Vector3 next = Position(boundary, from.Y + PowerLaneOffset.z / 2, PowerLaneOffset.y);
-                    DrawPowerCable(previous, next, connected);
+                    DrawPowerCable(previous, next, connected, from, to, null, offset);
+                    offset += Vector3.Distance(previous, next);
                     previous = next;
                 }
-            DrawPowerCable(previous, PowerNode(to), connected);
+            DrawPowerCable(previous, PowerNode(to), connected, from, to, null, offset);
         }
 
-        private void DrawPowerCable(Vector3 start, Vector3 end, bool connected)
+        private void DrawPowerCable(Vector3 start, Vector3 end, bool connected,
+            Cell from = default, Cell to = default, Structure building = null, float flowOffset = 0)
         {
             Vector3 direction = end - start;
             if (direction.sqrMagnitude < 0.0001f) return;
@@ -73,9 +119,19 @@ namespace AstraExpress
             casing.transform.localRotation = rotation;
             var core = Box(connected ? "Connected power line" : "Unpowered conduit", networkRoot,
                 center + rotation * Vector3.up * 0.09f,
-                new Vector3(0.13f, 0.06f, direction.magnitude + 0.08f),
-                connected ? powerMaterial : darkPowerMaterial);
+                new Vector3(0.17f, 0.065f, direction.magnitude + 0.08f),
+                connected ? powerFlowMaterial != null ? powerFlowMaterial : powerMaterial : darkPowerMaterial);
             core.transform.localRotation = rotation;
+            if (connected && powerFlowMaterial != null)
+            {
+                var renderer = core.GetComponent<Renderer>();
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                powerFlowSegments.Add(new PowerFlowSegment
+                {
+                    Renderer = renderer, From = from, To = to, Building = building,
+                    Length = direction.magnitude + 0.08f, Offset = flowOffset - 0.04f
+                });
+            }
         }
 
         private void DrawBuildingConnection(Structure structure)
@@ -111,9 +167,11 @@ namespace AstraExpress
             Vector3 ramp = new Vector3(node.x, groundHeight + 0.27f, foundationFront - 0.10f);
             Vector3 elbow = new Vector3(socket.x, groundHeight + 0.27f, ramp.z);
             Vector3 inlet = new Vector3(socket.x, groundHeight + 0.27f, socket.z - 0.22f);
-            DrawPowerCable(node, ramp, structure.Connected);
-            DrawPowerCable(ramp, elbow, structure.Connected);
-            DrawPowerCable(elbow, inlet, structure.Connected);
+            DrawPowerCable(node, ramp, structure.Connected, building: structure);
+            DrawPowerCable(ramp, elbow, structure.Connected, building: structure,
+                flowOffset: Vector3.Distance(node, ramp));
+            DrawPowerCable(elbow, inlet, structure.Connected, building: structure,
+                flowOffset: Vector3.Distance(node, ramp) + Vector3.Distance(ramp, elbow));
             if (!Simulation.Conduits.Contains(structure.Port)) DrawPowerJunction(structure.Port, indicator);
 
             Box("Building power socket", networkRoot, socket,
@@ -131,10 +189,83 @@ namespace AstraExpress
 
         private void UpdatePowerVisuals()
         {
+            bool hasPower = Simulation.Battery > 0.01f || Simulation.Generation > 0;
+            if (powerFlowMaterial != null)
+            {
+                // Simulation.Paused does not change Unity's time scale.
+                if (!Simulation.Paused && hasPower) powerFlowTime += Time.deltaTime;
+                powerFlowMaterial.SetFloat(FlowTimeId, powerFlowTime);
+                powerFlowMaterial.SetFloat(PowerAvailableId, hasPower ? 1 : 0);
+                if (Time.unscaledTime >= nextPowerFlowRefresh)
+                {
+                    RefreshPowerFlow();
+                    nextPowerFlowRefresh = Time.unscaledTime + 0.25f;
+                }
+            }
             float glow = 0.6f;
-            if (!Simulation.Paused && (Simulation.Battery > 0.01f || Simulation.Generation > 0))
+            if (!Simulation.Paused && hasPower)
                 glow += 0.18f * (0.5f + 0.5f * Mathf.Sin(Time.time * 2.5f));
             powerMaterial.SetColor("_EmissionColor", cyan * glow);
+        }
+
+        private void RefreshPowerFlow()
+        {
+            if (powerFlowMaterial == null) return;
+            powerSourceDistances.Clear();
+            powerSourcePorts.Clear();
+            var frontier = new Queue<Cell>();
+            foreach (var structure in Simulation.Structures)
+                if (structure.Connected && Simulation.PoweredCells.Contains(structure.Port) &&
+                    (structure.Kind == StructureKind.Solar ||
+                     structure.Kind == StructureKind.PowerPlant && structure.Generation > 0.01f))
+                    powerSourcePorts.Add(structure.Port);
+            // Starter solar supplies the colony internally until wired into the visible grid.
+            // Battery supply also originates here when no connected generator is producing.
+            if (powerSourcePorts.Count == 0) powerSourcePorts.Add(Simulation.Colony.Port);
+            foreach (var port in powerSourcePorts)
+            {
+                powerSourceDistances[port] = 0;
+                frontier.Enqueue(port);
+            }
+            while (frontier.Count > 0)
+            {
+                Cell cell = frontier.Dequeue();
+                foreach (var direction in ColonySimulation.Directions)
+                {
+                    Cell next = cell + direction;
+                    if (!Simulation.PoweredCells.Contains(next) || powerSourceDistances.ContainsKey(next) ||
+                        !Simulation.Terrain.CanTraverse(cell, next)) continue;
+                    powerSourceDistances[next] = powerSourceDistances[cell] + 1;
+                    frontier.Enqueue(next);
+                }
+            }
+            foreach (var segment in powerFlowSegments)
+            {
+                float direction = 0;
+                float amount = 1;
+                if (segment.Building != null)
+                {
+                    var structure = segment.Building;
+                    direction = powerSourcePorts.Contains(structure.Port) || structure.Kind == StructureKind.Solar ? -1 : 1;
+                    if (structure.Kind == StructureKind.Extractor)
+                        amount = !structure.Paused && structure.Stock < structure.Storage && structure.SuppliedFraction > 0.01f ? 1 : 0;
+                    else if (structure.Kind == StructureKind.PowerPlant)
+                        amount = structure.Generation > 0.01f ? 1 : 0;
+                }
+                else if (powerSourceDistances.TryGetValue(segment.From, out int fromDistance) &&
+                    powerSourceDistances.TryGetValue(segment.To, out int toDistance))
+                    // Equal-distance cross-links have no single sourceward direction.
+                    direction = fromDistance == toDistance ? 0 : toDistance > fromDistance ? 1 : -1;
+                if (segment.Direction == direction && segment.Amount == amount) continue;
+                segment.Direction = direction;
+                segment.Amount = amount;
+                powerFlowProperties.Clear();
+                powerFlowProperties.SetFloat(FlowLengthId, segment.Length);
+                powerFlowProperties.SetFloat(FlowOffsetId, segment.Offset);
+                powerFlowProperties.SetFloat(FlowDirectionId, direction);
+                powerFlowProperties.SetFloat(FlowAmountId, amount);
+                segment.Renderer.SetPropertyBlock(powerFlowProperties);
+            }
         }
     }
 }

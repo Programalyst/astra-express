@@ -183,3 +183,46 @@ test('selected empty plant asks for discovered Fluxite without inventing a hidde
   const t=advise({...s,deposits:[{resource:'Fluxite',origin:point(13,3),cost:150,size:1,buildable:true}]} )[0];
   assert.equal(t.id,'fuel-extractor-13-3');assert.match(t.body,/never sold/);
 });
+
+const cueAnchors = ['tool-explore','tool-extractor','tool-conduit','tool-rail','tool-solar','tool-plant','fleet','pause','primary-action','mine-pause','buy-train','train-capacity','train-next'].map(id=>({id,visible:true}));
+test('construction cues progress from the real toolbar to the revealed world patch',()=>{
+  const s=state({uiAnchors:cueAnchors,deposits:[{origin:point(11,7),size:1,cost:150,buildable:true}]});
+  assert.equal(advise(s)[0].uiTarget,'tool-extractor');
+  const ready=advise({...s,tool:'Extractor'})[0];
+  assert.equal(ready.uiTarget,null);assert.deepEqual(ready.target,point(11,7));assert.match(ready.targetLabel,/place the extractor/);
+});
+test('dispatch cues require selecting the intended mine before pointing at its sidebar action',()=>{
+  const b=mine({connected:true,railConnected:true});
+  const s=state({uiAnchors:cueAnchors,buildings:[b],tool:'Rail'});
+  assert.equal(advise(s)[0].uiTarget,'tool-explore');
+  assert.equal(advise({...s,tool:'Explore',selected:point(3,11)})[0].uiTarget,null);
+  const ready=advise({...s,tool:'Explore',selected:b.origin})[0];
+  assert.equal(ready.uiTarget,'primary-action');assert.match(ready.cueLabel,/Dispatch idle train/);
+  assert.doesNotMatch(ready.steps.join(' '),/Press 1/);
+});
+test('connection cues advance from tool to port to destination without repeating completed steps',()=>{
+  const s=state({uiAnchors:cueAnchors,buildings:[mine()]});
+  assert.equal(advise(s)[0].uiTarget,'tool-conduit');
+  const port=advise({...s,tool:'Conduit'})[0];
+  assert.equal(port.uiTarget,null);assert.match(port.steps[0],/Click marker 1/);
+  const destination=advise({...s,tool:'Conduit',routeStarted:true,routeStart:point(5,6)})[0];
+  assert.deepEqual(destination.target,point(11,6));assert.match(destination.targetLabel,/marker 2/);
+});
+test('Fleet cues advance to Buy train and never point at absent controls',()=>{
+  const b=mine({connected:true,railConnected:true});
+  const s=state({uiAnchors:cueAnchors,buildings:[b],selected:b.origin,trainPhase:'ToMine'});
+  assert.equal(advise(s)[0].uiTarget,'fleet');
+  assert.equal(advise({...s,trainSelected:true})[0].uiTarget,'buy-train');
+  assert.equal(advise({...s,trainSelected:true,uiAnchors:[]})[0].uiTarget,null);
+});
+test('paused colony has an actionable Resume cue without a world target',()=>{
+  const t=advise(state({paused:true,uiAnchors:cueAnchors}))[0];
+  assert.equal(t.uiTarget,'pause');assert.equal(t.target,null);
+});
+test('capacity cues select the intended train before highlighting an upgrade',()=>{
+  const s=state({uiAnchors:cueAnchors,deliveries:2,trainSelected:true,selectedTrainIndex:0,
+    buildings:[mine({connected:true,railConnected:true,served:true})],
+    trains:[loco(0,{capacityLevel:3}),loco(1,{capacityLevel:1})]});
+  assert.equal(advise(s).find(t=>t.id==='upgrade-train').uiTarget,'train-next');
+  assert.equal(advise({...s,selectedTrainIndex:1}).find(t=>t.id==='upgrade-train').uiTarget,'train-capacity');
+});
