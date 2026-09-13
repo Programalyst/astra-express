@@ -1,10 +1,10 @@
 # Astra Express Game Design Document
 
-Version 0.5 · 13 September 2026 · Pre-event implementation authorized
+Version 0.6 · 13 September 2026 · Hackathon implementation
 
-The current 90-minute implementation commitment is defined in [Pre-event milestone](PRE_EVENT_MILESTONE.md). It deliberately implements a subset of this full-game design and protects a further 30-minute buffer.
+The original 90-minute implementation commitment is recorded in [Pre-event milestone](PRE_EVENT_MILESTONE.md). The hackathon implementation continues beyond that historical checkpoint.
 
-The first ore-delivery checkpoint is now implemented and validated in the Editor and local Chrome Web build. See [Playable handoff](PLAYABLE_HANDOFF.md) for exact scope, controls, evidence, known limits, and the missed pre-event timing; this full design still includes subsequent milestones.
+The first ore-delivery checkpoint is implemented and validated in the Editor and local Chrome Web build. Fluxite power plants and a four-locomotive fleet now extend that loop. See [Playable handoff](PLAYABLE_HANDOFF.md) for evidence and [Fuel milestone](FUEL_MILESTONE.md) for current controls and balance. This full design still includes unimplemented proposals.
 
 ## Game concept
 
@@ -113,11 +113,15 @@ Electrical connectivity and rail connectivity are separate. Track never transmit
 
 Recalculate the electrical graph after construction or demolition. A Power overlay highlights connected lines and buildings. Removing a conduit previews which buildings will lose their connection. Disconnection stops future mining work and preserves production progress and stored ore.
 
-### Fuel-fired generation: subsequent milestone
+### Fuel-fired generation
 
 Use a second infinite resource, provisionally named Fluxite. Its powered extractor stores fuel locally; a train transports it to a power plant rather than selling it as ore at the colony. A conduit-connected plant consumes its local fuel inventory over time and contributes generation to the same shared battery. Delivery is not a permanent generation upgrade: sustained output requires sustained fuel shipments. Resource type and deposit footprint are separate properties.
 
 Proposed recovery rules: solar bootstraps fuel extraction, trains do not require battery power, and a connected fueled plant can restart with an empty shared battery. Keep solar useful as a dependable baseline when fuel delivery stops. Pause fuel consumption when no generation is needed, retain any partly used burn cycle, and show plant fuel stock, supply warnings, and generation separately from solar. Fuel consumed by a plant earns no delivery credits in the initial fuel-chain design. Exact plant footprint, price, buffer, burn rate, and output are still tuning decisions. Track fuel produced, stored, transported, and consumed independently of ore sold.
+
+Implemented tuning defaults: a plant occupies 2 by 2 clear cells, costs 250 credits, holds 48 Fluxite, and supplies up to 8 power/second. Each fuel unit provides 40 power; remaining burn energy is retained through pause, disconnection, or a satisfied battery. Solar generation is applied first. A plant consumes only enough energy to fill remaining battery headroom, so displayed actual output can be below its rated maximum. Fuel consumed counts units opened for combustion, including the unit whose remaining energy is displayed by the plant.
+
+Fluxite deposits are at `(13, 3)` (1 by 1) and `(4, 17)` (2 by 2). These are additional deposits, not replacements for the five ore sites. Extractors use the same tier prices, mining power, storage, and upgrades for either resource. Ore and fuel have independent conservation ledgers.
 
 ## Construction and extraction
 
@@ -145,7 +149,7 @@ Deposits never run out. The first small mine can keep funding expansion while th
 
 Lay orthogonal track on explored terrain, with a clear total price before confirmation. Prototype short drags or start-and-end previews, then choose the more usable input method. Reusing existing track is free. Invalid or unaffordable placement charges nothing.
 
-Select an extractor, assign an available train, and start a service only when a continuous rail path reaches the colony depot. The train loads, travels home, unloads, returns empty, and repeats. Begin with two-stop services and a small fleet. Multi-stop schedules can follow later.
+Select an extractor and dispatch an idle train only when a continuous rail path reaches the colony depot and the delivery destination. Ore goes to the colony. For Fluxite, choose a plant in the extractor panel; the train then runs between that mine and plant. The first departure comes from the colony depot. The free starter locomotive can be supplemented with three more, costing 150 credits each, so ore income and fuel supply operate simultaneously. Multi-stop schedules remain deferred.
 
 Train capacity caps each load. Show ore visually and numerically, with Waiting for ore, Loading, Delivering, and Returning states. After a short loading dwell, a train can depart with a partial load; with no cargo it waits instead of running empty services.
 
@@ -153,7 +157,7 @@ The colony accepts and sells ore immediately. Remove unloaded cargo and award it
 
 Trains may share track and pass each other initially. Signals, collisions, reservations between competing trains, and congestion simulation are deferred. Capacity upgrades apply at the next loading stop and preserve cargo already aboard.
 
-Block removal of track used by an active service. Cancellation or reassignment takes effect after the current delivery and return to the colony. An idle, empty train can be sold. These restrictions prevent track editing from stranding paid-for equipment or deleting cargo.
+Cancellation takes effect after any current cargo delivery and a physical return to the colony. A full plant causes its fuel train to wait with remaining cargo aboard, including when parking is requested; resume the plant and provide electricity demand so it makes room. Reassignment is available only after parking. One service per extractor and four trains total are the current limits. Track removal and selling trains are not implemented.
 
 ## Economy and starting balance
 

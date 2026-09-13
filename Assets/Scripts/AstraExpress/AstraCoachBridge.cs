@@ -32,29 +32,38 @@ namespace AstraExpress
         }
         [Serializable] private sealed class CoachBuilding
         {
-            public string kind;
-            public CoachPoint origin, port;
-            public bool connected, paused, railConnected, served;
-            public int stock, storage, level;
-            public float demand, rate;
-            public CoachRoute powerRoute, railRoute;
+            public string kind, resource;
+            public CoachPoint origin, port, destination, destinationPort;
+            public bool connected, paused, railConnected, served, destinationRailConnected;
+            public int stock, storage, level, size, servedBy;
+            public float demand, rate, generation, burnEnergy, suppliedFraction;
+            public CoachRoute powerRoute, railRoute, destinationRailRoute;
         }
         [Serializable] private sealed class CoachDeposit
         {
             public CoachPoint origin;
             public int size, cost;
             public bool buildable;
-            public string reason;
+            public string reason, resource;
+        }
+        [Serializable] private sealed class CoachTrain
+        {
+            public int index, cargo, capacity, capacityLevel;
+            public string phase, status, resource;
+            public bool parkRequested, waitingForFuelSpace;
+            public CoachPoint position, source, destination;
         }
         [Serializable] private sealed class CoachState
         {
             public string session, tool, message, selectedKind, trainPhase, placementReason;
             public int credits, produced, sold, deliveries, capacity, capacityLevel, cargo;
-            public float battery, generation, demand, elapsed;
-            public bool paused, roverMoving, routeStarted, trainParkRequested;
-            public CoachPoint rover, colonyPort, selected, routeStart, frontier, solarSite;
+            public int selectedTrainIndex, idleTrains, trainCount, maxTrains, trainCost, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
+            public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy;
+            public bool paused, roverMoving, routeStarted, trainParkRequested, trainSelected, canBuyTrain;
+            public CoachPoint rover, colonyPort, selected, routeStart, frontier, solarSite, plantSite, fuelDestination;
             public CoachBuilding[] buildings;
             public CoachDeposit[] deposits;
+            public CoachTrain[] trains;
         }
         private void ResetCoach() { coachSession = Guid.NewGuid().ToString("N"); coachTimer = 1; }
 
@@ -149,12 +158,52 @@ namespace AstraExpress
             if (!best[best.Count - 1].Equals(stops[stops.Count - 1])) stops.Add(best[best.Count - 1]);
             return new CoachRoute { possible = true, cost = bestCost, nextSegment = LinkSegmentIndex(stops, rail), reason = "", stops = stops.Select(CoachPosition).ToArray() };
         }
+
+        // Read the same destination the extractor sidebar presents. This never assigns
+        // a service or changes the player's selected destination.
+        private Structure CoachFuelDestination(Structure extractor)
+        {
+            if (extractor == null || extractor.Kind != StructureKind.Extractor || extractor.Deposit.Resource != ResourceKind.Fluxite) return null;
+            var assigned = Simulation.Trains.FirstOrDefault(train => train.Source == extractor);
+            if (assigned?.Destination != null) return assigned.Destination;
+            if (fuelDestination != null && fuelDestination.Kind == StructureKind.PowerPlant && Simulation.Structures.Contains(fuelDestination)) return fuelDestination;
+            return Simulation.Structures.FirstOrDefault(building => building.Kind == StructureKind.PowerPlant);
+        }
+
+        private CoachBuilding CoachBuildingState(Structure building)
+        {
+            bool extractor = building.Kind == StructureKind.Extractor;
+            bool plant = building.Kind == StructureKind.PowerPlant;
+            int servedBy = Simulation.Trains.FindIndex(train => train.Phase != TrainPhase.Parked && (extractor ? train.Source == building : plant && train.Destination == building));
+            Structure destination = extractor ? building.Deposit.Resource == ResourceKind.Fluxite ? CoachFuelDestination(building) : Simulation.Colony : null;
+            bool destinationRails = destination != null && Simulation.FindPath(building.Port, destination.Port, cell => Simulation.Rails.Contains(cell)) != null;
+            return new CoachBuilding {
+                kind = building.Kind.ToString(), resource = extractor ? building.Deposit.Resource.ToString() : plant ? ResourceKind.Fluxite.ToString() : "",
+                origin = CoachPosition(building.Origin), port = CoachPosition(building.Port), size = building.Size,
+                connected = building.Connected, paused = building.Paused, stock = building.Stock, storage = building.Storage, level = building.Level,
+                demand = extractor ? building.Demand : 0, rate = building.Rate, generation = building.Kind == StructureKind.Solar && building.Connected ? 2 : building.Generation,
+                burnEnergy = building.BurnEnergy, suppliedFraction = building.SuppliedFraction, served = servedBy >= 0, servedBy = servedBy,
+                railConnected = (extractor || plant) && Simulation.RailRoute(building) != null,
+                powerRoute = building.Connected ? null : CoachPath(building, false),
+                railRoute = extractor || plant ? CoachPath(building, true) : null,
+                destination = destination == null ? null : CoachPosition(destination.Origin),
+                destinationPort = destination == null ? null : CoachPosition(destination.Port),
+                destinationRailConnected = destinationRails,
+                // Mines first join the depot network. A plant linked to that same
+                // network can receive fuel; no extra extractor-to-plant line is needed.
+                destinationRailRoute = destination != null && destination != Simulation.Colony && !destinationRails ? CoachPath(destination, true) : null
+            };
+        }
+
         private void PublishCoach()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             coachTimer += Time.unscaledDeltaTime;
             if (coachTimer < 0.75f) return;
             coachTimer = 0;
+            int trainIndex = Mathf.Clamp(selectedTrainIndex, 0, Simulation.Trains.Count - 1);
+            var currentTrain = Simulation.Trains[trainIndex];
+            var currentDestination = CoachFuelDestination(selected);
             var state = new CoachState {
                 session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(),
                 credits = Simulation.Credits, battery = Simulation.Battery, generation = Simulation.Generation, demand = Simulation.Demand,
@@ -163,26 +212,35 @@ namespace AstraExpress
                 colonyPort = CoachPosition(Simulation.Colony.Port), message = Simulation.Message,
                 selectedKind = selected == null ? "" : selected.Kind.ToString(), selected = selected == null ? null : CoachPosition(selected.Origin),
                 routeStarted = routeStart.HasValue, routeStart = routeStart.HasValue ? CoachPosition(routeStart.Value) : null,
-                trainPhase = Simulation.Train.Phase.ToString(), trainParkRequested = Simulation.Train.ParkRequested,
-                capacity = Simulation.Train.Capacity, capacityLevel = Simulation.Train.CapacityLevel, cargo = Simulation.Train.Cargo,
+                trainPhase = currentTrain.Phase.ToString(), trainParkRequested = currentTrain.ParkRequested,
+                capacity = currentTrain.Capacity, capacityLevel = currentTrain.CapacityLevel, cargo = currentTrain.Cargo,
+                trainSelected = trainSelected, selectedTrainIndex = trainIndex,
+                idleTrains = Simulation.Trains.Count(train => train.Phase == TrainPhase.Parked), trainCount = Simulation.Trains.Count,
+                trainCost = ColonySimulation.TrainCost, maxTrains = ColonySimulation.MaxTrains,
+                canBuyTrain = Simulation.Trains.Count < ColonySimulation.MaxTrains && Simulation.Credits >= ColonySimulation.TrainCost,
+                plantCost = ColonySimulation.PlantCost, plantOutput = ColonySimulation.PlantOutput, fuelEnergy = ColonySimulation.FuelEnergy,
+                solarGeneration = Simulation.SolarGeneration, fuelGeneration = Simulation.FuelGeneration,
+                fuelProduced = Simulation.FuelProduced, fuelDelivered = Simulation.FuelDelivered, fuelConsumed = Simulation.FuelConsumed,
+                fuelDestination = currentDestination == null ? null : CoachPosition(currentDestination.Origin),
                 placementReason = ""
             };
-            if (hover.HasValue && (tool == Tool.Extractor || tool == Tool.Solar))
-                Simulation.CanBuild(tool == Tool.Extractor ? StructureKind.Extractor : StructureKind.Solar, hover.Value, out _, out _, out _, out state.placementReason);
+            if (hover.HasValue && (tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant))
+                Simulation.CanBuild(tool == Tool.Extractor ? StructureKind.Extractor : tool == Tool.PowerPlant ? StructureKind.PowerPlant : StructureKind.Solar, hover.Value, out _, out _, out _, out state.placementReason);
             if (hover.HasValue && routeStart.HasValue)
                 Simulation.CanLay(ColonySimulation.Corridor(routeStart.Value, hover.Value, verticalFirst), tool == Tool.Rail, out _, out state.placementReason);
-            state.buildings = Simulation.Structures.Select(building => new CoachBuilding {
-                kind = building.Kind.ToString(), origin = CoachPosition(building.Origin), port = CoachPosition(building.Port),
-                connected = building.Connected, paused = building.Paused, stock = building.Stock, storage = building.Storage, level = building.Level,
-                demand = building.Demand, rate = building.Rate, served = Simulation.Train.Source == building,
-                railConnected = building.Kind == StructureKind.Extractor && Simulation.RailRoute(building) != null,
-                powerRoute = building.Connected ? null : CoachPath(building, false),
-                railRoute = building.Kind == StructureKind.Extractor ? CoachPath(building, true) : null
+            state.buildings = Simulation.Structures.Select(CoachBuildingState).ToArray();
+            state.trains = Simulation.Trains.Select((train, index) => new CoachTrain {
+                index = index, phase = train.Phase.ToString(), status = TrainStatus(train), resource = train.Resource.ToString(),
+                cargo = train.Cargo, capacity = train.Capacity, capacityLevel = train.CapacityLevel, parkRequested = train.ParkRequested,
+                position = CoachPosition(new Cell((int)Math.Round(train.X), (int)Math.Round(train.Y))),
+                source = train.Source == null ? null : CoachPosition(train.Source.Origin),
+                destination = train.Destination == null ? null : CoachPosition(train.Destination.Origin),
+                waitingForFuelSpace = train.Phase == TrainPhase.Unloading && train.Resource == ResourceKind.Fluxite && train.Cargo > 0 && train.Destination != null && train.Destination.Stock >= train.Destination.Storage
             }).ToArray();
             // Do not reveal ore coordinates hidden by fog to the model.
             state.deposits = Simulation.Deposits.Where(deposit => Simulation.FullyRevealed(deposit) && deposit.Extractor == null).Select(deposit => {
                 bool can = Simulation.CanBuild(StructureKind.Extractor, deposit.Origin, out _, out _, out int cost, out string reason);
-                return new CoachDeposit { origin = CoachPosition(deposit.Origin), size = deposit.Size, cost = cost, buildable = can, reason = reason };
+                return new CoachDeposit { origin = CoachPosition(deposit.Origin), resource = deposit.Resource.ToString(), size = deposit.Size, cost = cost, buildable = can, reason = reason };
             }).ToArray();
             var clear = new List<Cell>();
             for (int x = 0; x < ColonySimulation.Width; x++)
@@ -196,7 +254,11 @@ namespace AstraExpress
                 .OrderBy(cell => Math.Abs(cell.X - Simulation.RoverX) + Math.Abs(cell.Y - Simulation.RoverY)).ThenByDescending(cell => cell.X).ToList();
             if (edge.Count > 0) state.frontier = CoachPosition(edge[0]);
             foreach (var cell in clear.OrderBy(cell => Math.Abs(cell.X - Simulation.Colony.Port.X) + Math.Abs(cell.Y - Simulation.Colony.Port.Y)))
-                if (Simulation.CanBuild(StructureKind.Solar, cell, out _, out _, out _, out _)) { state.solarSite = CoachPosition(cell); break; }
+            {
+                if (state.solarSite == null && Simulation.CanBuild(StructureKind.Solar, cell, out _, out _, out _, out _)) state.solarSite = CoachPosition(cell);
+                if (state.plantSite == null && Simulation.CanBuild(StructureKind.PowerPlant, cell, out _, out _, out _, out _)) state.plantSite = CoachPosition(cell);
+                if (state.solarSite != null && state.plantSite != null) break;
+            }
             AstraCoachPublish(JsonUtility.ToJson(state));
 #endif
         }

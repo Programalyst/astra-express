@@ -8,7 +8,7 @@ The user imported `Assets/Kenny/kenney_space-kit/` and `Assets/Kenny/kenney_city
 
 Solar installations must use `Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx`. Its preview shows a grouped panel assembly; measure the imported bounds before choosing its grid footprint rather than assuming one mesh equals one tile.
 
-The Space Kit contains `rover.fbx`, `monorail_trainFront.fbx`, `monorail_trainCargo.fbx`, straight/corner monorail pieces, crystal clusters, and generator props under `Models/FBX format/`. These are candidates for the rover, train, rails, fuel deposits, and future power plant respectively, not yet proof of compatible bounds, ports, or URP materials. The requested fuel-chain art follows the first ore-delivery milestone. Wrap supplied meshes in gameplay presentation objects rather than editing vendor FBX files.
+The Space Kit contains `rover.fbx`, `monorail_trainFront.fbx`, `monorail_trainCargo.fbx`, straight/corner monorail pieces, crystal clusters, and generator props under `Models/FBX format/`. The runtime uses the rover, locomotive, generator, and rock models. The fuel milestone adds green-tinted rock deposits, matching extractor towers and cargo, and a generator-based plant with generated reactor/exchanger props. Crystal meshes, dedicated rail pieces, cargo wagons, and final plant artwork remain candidates for the art pass. Wrap supplied meshes in gameplay presentation objects rather than editing vendor FBX files.
 
 ## Direction and review
 
@@ -66,6 +66,8 @@ These listings were checked on 12 September 2026. Preserve licenses and record f
 Blender can supply missing vehicle or infrastructure meshes. Image generation is optional for a mood reference or illustration; exact track geometry and the fog mask are better authored directly.
 
 ## Import conventions
+
+The playable floor uses the Space Kit's `terrain.fbx`, retaining its rust-colored rock material through URP conversion. Each flat mesh fits one 2-unit cell with a narrow grid seam. Fog replaces every terrain material slot until that cell is explored. Ramps and raised terrain are not used: the current vehicles, rails, and building placement share a flat ground plane.
 
 - One gameplay tile is 2 Unity units square. Use a consistent metre-based scale.
 - Ground lies on XZ with Y up. Vehicles face positive local Z and use ground-centred pivots; wheels pivot around their axles.

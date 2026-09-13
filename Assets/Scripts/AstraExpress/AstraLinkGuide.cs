@@ -57,12 +57,34 @@ namespace AstraExpress
             return segment;
         }
 
+        private string LinkCompletion(Structure building, bool rail)
+        {
+            if (!rail)
+            {
+                if (building.Kind == StructureKind.Solar) return "POWER LINKED · This solar array now supplies the colony.";
+                if (building.Kind == StructureKind.PowerPlant) return building.Paused ? "POWER LINKED · Resume this plant after Fluxite arrives." : "POWER LINKED · Delivered Fluxite can fuel this plant when the battery needs power.";
+                return building.Paused ? "POWER LINKED · Resume this extractor to start mining." : "POWER LINKED · Rails and an assigned train carry the mined resource.";
+            }
+            if (building.Kind == StructureKind.PowerPlant) return "PLANT RAIL LINKED · Select a Fluxite extractor and choose this plant as its destination.";
+            if (building.Deposit?.Resource == ResourceKind.Fluxite)
+            {
+                var destination = CoachFuelDestination(building);
+                if (destination == null) return "RAIL LINKED · Build a power plant, then choose it for Fluxite deliveries.";
+                if (!destination.Connected) return "RAIL LINKED · Connect the selected plant's power port next.";
+                if (Simulation.RailRoute(destination) == null) return "RAIL LINKED · Connect the selected plant to the same rail network.";
+            }
+            if (Simulation.Trains.Any(train => train.Source == building)) return "RAIL LINKED · This extractor already has an assigned train.";
+            return Simulation.Trains.Any(train => train.Phase == TrainPhase.Parked)
+                ? "RAIL LINKED · Select this extractor and choose Dispatch idle train."
+                : "RAIL LINKED · Open Fleet to buy a locomotive or park an existing service.";
+        }
+
         private void UpdateLinkGuide()
         {
             if (selected != linkSelection) { linkSelection = selected; linkSuppressed = false; }
             Structure next = null;
             Tool nextTool = Tool.Conduit;
-            if (selected != null && selected.Kind == StructureKind.Extractor && tool == Tool.Rail && Simulation.RailRoute(selected) == null)
+            if (selected != null && (selected.Kind == StructureKind.Extractor || selected.Kind == StructureKind.PowerPlant) && tool == Tool.Rail && Simulation.RailRoute(selected) == null)
             { next = selected; nextTool = Tool.Rail; }
             else if (selected != null && !selected.Connected) next = selected;
             if (next != linkTarget || nextTool != linkTool)
@@ -70,10 +92,7 @@ namespace AstraExpress
                 if (linkTarget != null && !linkSuppressed &&
                     (linkTool == Tool.Conduit ? linkTarget.Connected : Simulation.RailRoute(linkTarget) != null))
                 {
-                    linkSuccess = linkTool == Tool.Conduit ? "POWER CONNECTED · The mine can now produce ore." : "RAIL CONNECTED · Select the extractor and Dispatch Train.";
-                    if (linkTool == Tool.Rail && Simulation.Train.Phase != TrainPhase.Parked && Simulation.Train.Source != linkTarget)
-                        linkSuccess = "RAIL CONNECTED · Use Park to switch mine, then dispatch when the train is parked.";
-                    if (linkTarget.Kind == StructureKind.Solar) linkSuccess = "POWER CONNECTED · This solar array now supplies the colony.";
+                    linkSuccess = LinkCompletion(linkTarget, linkTool == Tool.Rail);
                     linkSuccessUntil = Time.unscaledTime + 4;
                 }
                 linkTarget = next; linkTool = nextTool; linkRevision = -1; linkStops.Clear();
@@ -162,6 +181,7 @@ namespace AstraExpress
                 !int.TryParse(parts[1], out int x) || !int.TryParse(parts[2], out int y)) return;
             var building = Simulation.Structures.FirstOrDefault(b => b.Origin.Equals(new Cell(x, y)));
             if (building == null || building.Kind == StructureKind.Colony) return;
+            if (parts[0] == "Rail" && building.Kind != StructureKind.Extractor && building.Kind != StructureKind.PowerPlant) return;
             selected = building;
             Tool requestedTool = parts[0] == "Rail" ? Tool.Rail : Tool.Conduit;
             if (tool != requestedTool) SetTool(requestedTool);
@@ -198,7 +218,7 @@ namespace AstraExpress
             Panel(panel);
             Fill(new Rect(panel.x, panel.y, 3, panel.height), cyan);
             bool possible = linkStops.Count > 1;
-            string kind = linkTool == Tool.Rail ? "RAIL" : "POWER";
+            string kind = linkTool == Tool.Rail ? linkTarget.Kind == StructureKind.PowerPlant ? "PLANT RAIL" : "RAIL" : "POWER";
             GUI.Label(new Rect(panel.x + 14, panel.y + 8, panel.width - 108, 20),
                 possible ? $"SUGGESTED {kind} LINK · {linkCost} credits · PREVIEW" : $"{kind} LINK · ROUTE BLOCKED", smallStyle);
             if (Button(new Rect(panel.xMax - 89, panel.y + 9, 76, 25), "HIDE  X")) { HideLinkGuide(); return; }
@@ -212,7 +232,8 @@ namespace AstraExpress
                 else instruction = $"Your start is outside this suggestion. Right-click to cancel, then start at marker {first}.";
                 for (int i = linkSegment; i < linkStops.Count; i++)
                 {
-                    string name = i == 0 ? "COLONY PORT" : i == linkStops.Count - 1 ? (linkTarget.Kind == StructureKind.Solar ? "SOLAR PORT" : "EXTRACTOR PORT") : "TURN HERE";
+                    string endpoint = linkTarget.Kind == StructureKind.PowerPlant ? "PLANT PORT" : linkTarget.Kind == StructureKind.Solar ? "SOLAR PORT" : linkTarget.Deposit?.Resource == ResourceKind.Fluxite ? "FLUXITE PORT" : "EXTRACTOR PORT";
+                    string name = i == 0 ? "COLONY PORT" : i == linkStops.Count - 1 ? endpoint : "TURN HERE";
                     bool active = i == linkSegment + (routeStart.HasValue && routeStart.Value.Equals(linkStops[linkSegment]) ? 1 : 0);
                     if (LinkMarkerRect(linkStops[i], out Rect marker))
                     {
@@ -228,10 +249,10 @@ namespace AstraExpress
                         }
                     }
                 }
-                float left = 28 + (int)linkTool * 157;
+                float left = 28 + (int)linkTool * 147;
                 float bottom = UiHeight - 88;
-                Fill(new Rect(left, bottom + 8, 147, 3), cyan);
-                Fill(new Rect(left, bottom + 60, 147, 3), cyan);
+                Fill(new Rect(left, bottom + 8, 139, 3), cyan);
+                Fill(new Rect(left, bottom + 60, 139, 3), cyan);
             }
             GUI.Label(new Rect(panel.x + 14, panel.y + 36, panel.width - 28, 46), instruction, bodyStyle);
         }

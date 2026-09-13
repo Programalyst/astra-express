@@ -84,14 +84,14 @@ namespace AstraExpress
         {
             string text = caption.ToLowerInvariant();
             if (text.Contains("hide") || text.Contains("close")) return "close";
-            if (text.Contains("restart")) return "restart";
+            if (text.Contains("restart") || text.Contains("confirm")) return "restart";
             if (text.Contains("resume") || text.Contains("dispatch")) return "play";
             if (text.Contains("pause")) return "pause";
             if (text.Contains("park")) return "park";
             if (text.Contains("upgrade") || text.Contains("capacity") || text.Contains("max level")) return "upgrade";
             if (text.Contains("power") || text.Contains("conduit")) return "conduit";
             if (text.Contains("rail")) return "rail";
-            if (text.Contains("train")) return "train";
+            if (text.Contains("train") || text.Contains("fleet")) return "train";
             if (text.Contains("rover") || text.Contains("explor")) return "rover";
             if (text.Contains("colony")) return "colony";
             return "focus";
@@ -103,6 +103,11 @@ namespace AstraExpress
             bool clicked = InterfaceHit(rectangle, name, enabled);
             InterfaceSurface(rectangle, active, enabled, cyan, name);
             string text = caption == "HIDE  X" ? "Hide" : caption;
+            if (caption == "<" || caption == ">")
+            {
+                GUI.Label(rectangle, caption, labelStyle);
+                return clicked;
+            }
             float iconSize = rectangle.height < 30 ? 16 : 20;
             InterfaceIcon(new Rect(rectangle.x + 8, rectangle.center.y - iconSize / 2, iconSize, iconSize), InterfaceIconName(caption), enabled);
             interfaceLabel.fontSize = rectangle.width < 130 ? 11 : 13;
@@ -121,7 +126,7 @@ namespace AstraExpress
             bool clicked = InterfaceHit(rectangle, name, true);
             InterfaceSurface(rectangle, active, true, accent, name);
             InterfaceIcon(new Rect(rectangle.x + 7, rectangle.y + 6, 32, 32), icon);
-            GUI.Label(new Rect(rectangle.x + 45, rectangle.y + 6, rectangle.width - 66, 17), title, interfaceLabel);
+            GUI.Label(new Rect(rectangle.x + 45, rectangle.y + 6, rectangle.width - (string.IsNullOrEmpty(key) ? 49 : 66), 17), title, interfaceLabel);
             GUI.Label(new Rect(rectangle.x + 45, rectangle.y + 25, rectangle.width - 49, 14), subtitle, interfaceSmall);
             if (!string.IsNullOrEmpty(key))
             {
@@ -154,16 +159,19 @@ namespace AstraExpress
             interfaceBadge.normal.textColor = muted;
         }
 
-        private string TrainStatus()
+        private string TrainStatus(FreightTrain train = null)
         {
-            if (Simulation.Train.Phase == TrainPhase.Parked) return "Parked at colony";
-            if (Simulation.Train.ParkRequested) return "Parking after delivery";
-            switch (Simulation.Train.Phase)
+            train = train ?? Simulation.Trains[Mathf.Clamp(selectedTrainIndex, 0, Simulation.Trains.Count - 1)];
+            if (train.Phase == TrainPhase.Parked) return "Parked at colony";
+            if (train.Phase == TrainPhase.Unloading && train.Resource == ResourceKind.Fluxite && train.Cargo > 0 && train.Destination != null && train.Destination.Stock >= train.Destination.Storage) return "Plant full: waiting";
+            if (train.Phase == TrainPhase.ReturningToDepot) return "Returning to depot";
+            if (train.ParkRequested) return "Parking after delivery";
+            switch (train.Phase)
             {
                 case TrainPhase.ToMine: return "Travelling to mine";
-                case TrainPhase.Loading: return "Loading ore";
-                case TrainPhase.ToColony: return "Returning to colony";
-                case TrainPhase.Unloading: return "Unloading ore";
+                case TrainPhase.Loading: return train.Resource == ResourceKind.Fluxite ? "Loading Fluxite" : "Loading ore";
+                case TrainPhase.ToColony: return train.Resource == ResourceKind.Fluxite ? "Delivering to plant" : "Returning to colony";
+                case TrainPhase.Unloading: return train.Resource == ResourceKind.Fluxite ? "Unloading Fluxite" : "Unloading ore";
                 default: return "Running";
             }
         }
