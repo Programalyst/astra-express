@@ -47,6 +47,12 @@ public static class AstraExpressEditor
         File.Delete(request);
         try
         {
+            if (action == "validateground")
+            {
+                AstraGroundSurfaceChecks.Validate();
+                Status("validated", "Continuous ground checks passed.");
+                return;
+            }
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode before running Editor jobs.");
             if (action == "setup") CreateScene();
             else if (action == "switchweb")

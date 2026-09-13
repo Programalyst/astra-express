@@ -20,6 +20,8 @@ namespace AstraExpress
         public GameObject HillsideModel;
         public GameObject HillsideCornerModel;
         public Material SurfaceTemplate;
+        public Material TerrainSurfaceMaterial;
+        [Min(0.1f)] public float TerrainTextureRepeat = 6f;
         [SerializeField] private string diagnostics;
         public ColonySimulation Simulation { get; private set; }
         private enum Tool { Explore, Extractor, Solar, Conduit, Rail, PowerPlant }
@@ -39,6 +41,7 @@ namespace AstraExpress
         private LineRenderer preview;
         private Material fogMaterial;
         private Material groundMaterial;
+        private AstraGroundSurface groundSurface;
         private Material foundationMaterial;
         private Material powerMaterial;
         private Material darkPowerMaterial;
@@ -161,10 +164,16 @@ namespace AstraExpress
             Simulation = new ColonySimulation();
             previousDeliveries = 0;
             revision = -1; revealRevision = -1;
+            var surfaceObject = new GameObject("Continuous colony ground");
+            surfaceObject.transform.SetParent(worldRoot, false);
+            groundSurface = surfaceObject.AddComponent<AstraGroundSurface>();
+            var surfaceMaterial = TerrainSurfaceMaterial != null ? TerrainSurfaceMaterial : Resources.Load<Material>("Terrain/NuclearKnights/Grid Desert");
+            groundSurface.Initialize(Simulation.Terrain, surfaceMaterial != null ? surfaceMaterial : groundMaterial, fogMaterial, TerrainTextureRepeat);
             for (int column = 0; column < ColonySimulation.Width; column++)
                 for (int row = 0; row < ColonySimulation.Height; row++)
                 {
                     var cell = new Cell(column, row);
+                    if (Simulation.Terrain.Kind(cell) == TerrainKind.Flat) continue;
                     var tile = CreateTerrain(cell);
                     ground[cell] = new GroundTile(tile, fogMaterial);
                 }
@@ -249,24 +258,16 @@ namespace AstraExpress
         private GameObject CreateTerrain(Cell cell)
         {
             TerrainKind kind = Simulation.Terrain.Kind(cell);
-            var prefab = Simulation.Terrain.IsCorner(cell) ? HillsideCornerModel : kind == TerrainKind.Ramp ? RampModel : kind == TerrainKind.Hillside ? HillsideModel : TerrainModel;
+            var prefab = Simulation.Terrain.IsCorner(cell) ? HillsideCornerModel : kind == TerrainKind.Ramp ? RampModel : HillsideModel;
             float baseHeight = Simulation.Terrain.Elevation(cell) * TerrainGrid.LevelHeight;
             var tile = Model(prefab, kind + " terrain " + cell, worldRoot, new Vector3(cell.X * 2, baseHeight - 0.02f, cell.Y * 2), 2, TerrainGrid.LevelHeight);
-            if (kind != TerrainKind.Flat)
-            {
-                var renderers = tile.GetComponentsInChildren<Renderer>();
-                var bounds = renderers[0].bounds;
-                foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
-                tile.transform.localScale = new Vector3(TerrainGrid.CellSize / Mathf.Max(bounds.size.x, 0.01f), TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), TerrainGrid.CellSize / Mathf.Max(bounds.size.z, 0.01f));
-                Cell uphill = Simulation.Terrain.Uphill(cell);
-                float yaw = Simulation.Terrain.IsCorner(cell) ? 90 : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
-                tile.transform.localRotation = Quaternion.Euler(0, yaw, 0);
-            }
-            else
-            {
-                tile.transform.localScale = new Vector3(0.985f, 1, 0.985f);
-                if (baseHeight > 0) Box("Plateau bedrock", tile.transform, new Vector3(0, -baseHeight * 0.5f - 0.04f, 0), new Vector3(2, baseHeight, 2), groundMaterial);
-            }
+            var renderers = tile.GetComponentsInChildren<Renderer>();
+            var bounds = renderers[0].bounds;
+            foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+            tile.transform.localScale = new Vector3(TerrainGrid.CellSize / Mathf.Max(bounds.size.x, 0.01f), TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), TerrainGrid.CellSize / Mathf.Max(bounds.size.z, 0.01f));
+            Cell uphill = Simulation.Terrain.Uphill(cell);
+            float yaw = Simulation.Terrain.IsCorner(cell) ? 90 : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
+            tile.transform.localRotation = Quaternion.Euler(0, yaw, 0);
             foreach (var filter in tile.GetComponentsInChildren<MeshFilter>())
             {
                 var collider = filter.gameObject.AddComponent<MeshCollider>();
@@ -341,6 +342,7 @@ namespace AstraExpress
             if (Simulation.RevealRevision != revealRevision)
             {
                 revealRevision = Simulation.RevealRevision;
+                groundSurface.SetRevealed(Simulation);
                 foreach (var pair in ground) pair.Value.SetRevealed(Simulation.IsRevealed(pair.Key));
                 foreach (var pair in ore) pair.Value.SetActive(Simulation.IsRevealed(pair.Key) && Simulation.DepositAt(pair.Key).Extractor == null);
                 SyncFogVisuals();
@@ -472,7 +474,7 @@ namespace AstraExpress
             var ray = worldCamera.ScreenPointToRay(screen);
             foreach (var hit in Physics.RaycastAll(ray, 200).OrderBy(hit => hit.distance))
             {
-                if (!terrainColliders.TryGetValue(hit.collider, out var cell)) continue;
+                if (!groundSurface.TryGetCell(hit, out var cell) && !terrainColliders.TryGetValue(hit.collider, out cell)) continue;
                 hover = cell;
                 break;
             }
