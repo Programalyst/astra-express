@@ -152,6 +152,8 @@ class AgentTurnError(ValueError):
 # Only these local constant reasons may leave the server. Never log raw model
 # text, request payloads, HTTP bodies, exception arguments, or credentials.
 PLAN_VALIDATION_REASONS = frozenset({
+    'Add solar capacity before another extractor',
+    'Add solar capacity before connecting another extractor',
     'A target tile is required',
     'Action must target an existing or earlier planned building',
     'Action needs an extractor',
@@ -163,6 +165,9 @@ PLAN_VALIDATION_REASONS = frozenset({
     'Describe a goal in 600 characters or fewer',
     'Dispatch needs an unserved mine and idle locomotive',
     'Extractor must target a revealed unused deposit',
+    'Extractor expansion target already met',
+    'Extractor expansion target not yet verified',
+    'Extractor target does not match the requested resource',
     'Fleet limit reached',
     'Fluxite needs a connected, rail-linked plant destination',
     'Invalid action explanation',
@@ -179,7 +184,10 @@ PLAN_VALIDATION_REASONS = frozenset({
     'Keep known resource deposits free for extractors',
     'Known extractor cost required',
     'Known route is blocked',
+    'Known route cost required',
+    'Known route required',
     'Known solar connection is blocked',
+    'New buildings require a fresh state before connections',
     'Only dispatch has a destination',
     'Only ready plans contain actions',
     'Only wait has a duration',
@@ -189,9 +197,14 @@ PLAN_VALIDATION_REASONS = frozenset({
     'Plan exceeds current credits; wait for income and replan',
     'Previous progress is too large',
     'Progress is too large',
+    'Requested extractors are not power connected',
+    'Requested mine services are not yet working',
     'Select one target at a time',
     'Stop or exploration must end a batch before replanning',
+    'Solar capacity target not yet verified',
+    'Solar connection route required',
     'Too much previous progress',
+    'Transport was not requested for this expansion',
     'Unexpected action target',
     'Unsupported game action',
     'Wait must be between 1 and 20 seconds',
@@ -415,6 +428,9 @@ class CoachServer(ThreadingHTTPServer):
                       'sessionsCreated':0,'sessionsReused':0,'sessionsDeleted':0,'cleanupFailures':0,'plansCompleted':0}
         self.agents = ManagedCoach(project, self.stats)
         self.planner_progress = planner.PlannerProgress()
+        self.planner_lock = threading.Lock()
+        self.planner_inflight = set()
+        self.stats.update(localPlansCompleted=0, upstreamPlansCompleted=0)
         super().__init__(address, CoachHandler)
 
 class CoachHandler(SimpleHTTPRequestHandler):
@@ -510,6 +526,7 @@ class CoachHandler(SimpleHTTPRequestHandler):
         finally: self.server.key_check_slot.release()
 
     def do_POST(self):
+        received_at = time.monotonic()
         if self.path not in ('/api/coach', '/api/astrabot/plan', '/api/coach/key'): return self.json_response(404, {'error':'Not found'})
         planning = self.path == '/api/astrabot/plan'
         origin = self.headers.get('Origin')
@@ -535,25 +552,55 @@ class CoachHandler(SimpleHTTPRequestHandler):
         try: config, tab_key = self.request_config()
         except ValueError: return self.json_response(400, {'error':'Invalid tab key; open AstraBot settings'})
         if not config['key']: return self.json_response(503, {'error':'Vision waiting for server key'})
-        if not self.server.vision_slot.acquire(blocking=False): return self.json_response(429, {'error':'AstraBot is already reading a screen'})
+        progress = self.server.planner_progress
+        progress_key, context = None, data
+        if planning:
+            # Continuations do no upstream work and should not queue behind a
+            # coaching turn. Keep goal-state transitions atomic across handlers.
+            namespace = hashlib.sha256((config['key'] + ':' + config['model']).encode()).hexdigest() + ':'
+            try:
+                with self.server.planner_lock:
+                    progress_key, context = progress.prepare(data, namespace=namespace, protected=self.server.planner_inflight)
+                    if progress_key in self.server.planner_inflight:
+                        return self.json_response(429, {'error':'AstraBot is already reading a screen', 'retryAfterMs':1000})
+                    local = progress.continuation(progress_key, context)
+                    if local:
+                        progress.remember(progress_key, local)
+                    else:
+                        self.server.planner_inflight.add(progress_key)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                return self.json_response(400, {'error':'A valid current game state is required'})
+            if local:
+                self.server.stats['localPlansCompleted'] += 1
+                self.server.stats['plansCompleted'] += 1
+                self.server.stats['completed'] += 1
+                self.server.stats['lastPlanTiming'] = {'source':'game-state', 'durationMs':round((time.monotonic()-received_at)*1000, 2)}
+                return self.json_response(200, local)
+        if not self.server.vision_slot.acquire(blocking=False):
+            with self.server.planner_lock:
+                self.server.planner_inflight.discard(progress_key)
+            return self.json_response(429, {'error':'AstraBot is already reading a screen', 'retryAfterMs':1000})
         temporary_agents = None
         try:
             now = time.monotonic()
             while self.server.requests and now-self.server.requests[0] > 3600: self.server.requests.popleft()
-            if now-self.server.last_request < 4: return self.json_response(429, {'error':'Wait a moment before asking again'})
+            if now-self.server.last_request < 4:
+                return self.json_response(429, {'error':'Wait a moment before asking again',
+                                                'retryAfterMs':max(100, int((4-now+self.server.last_request)*1000)+1)})
             if len(self.server.requests) >= 120: return self.json_response(429, {'error':'Hourly vision limit reached · game tips available'})
             self.server.last_request = now
             self.server.requests.append(now)
             # Tab credentials cannot reuse another user's conversation or registry.
             temporary_agents = ManagedCoach(self.server.project, self.server.stats, persistent=False) if tab_key else None
             agents = temporary_agents or self.server.agents
-            progress = self.server.planner_progress
-            namespace = 'tab:' + hashlib.sha256(config['key'].encode()).hexdigest() + ':' if tab_key else ''
             if planning:
-                progress_key, context = progress.prepare(data, namespace=namespace)
                 result = agents.advise(context, config, planner_key=progress_key)
-                progress.remember(progress_key, result)
+                result['planSource'] = 'agents-api'
+                with self.server.planner_lock:
+                    progress.remember(progress_key, result)
                 self.server.stats['plansCompleted'] += 1
+                self.server.stats['upstreamPlansCompleted'] += 1
+                self.server.stats['lastPlanTiming'] = {'source':'agents-api', 'durationMs':round((time.monotonic()-received_at)*1000, 2)}
             else:
                 result = agents.advise(data, config)
             self.server.stats['completed'] += 1
@@ -576,7 +623,10 @@ class CoachHandler(SimpleHTTPRequestHandler):
         finally:
             try:
                 if temporary_agents is not None: temporary_agents.cleanup(config, all_sessions=True)
-            finally: self.server.vision_slot.release()
+            finally:
+                with self.server.planner_lock:
+                    self.server.planner_inflight.discard(progress_key)
+                self.server.vision_slot.release()
 
 def main():
     parser = argparse.ArgumentParser()

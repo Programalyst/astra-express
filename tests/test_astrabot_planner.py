@@ -29,9 +29,15 @@ def plan(actions, status='ready'):
             'status': status, 'actions': actions, 'nextCheck': 'Check connections and the assigned train in the next frame.'}
 
 
-def mine(resource='Ore'):
-    return {'kind': 'Extractor', 'resource': resource, 'origin': {'x': 11, 'y': 7}, 'port': {'x': 11, 'y': 6},
-            'connected': True, 'railConnected': True, 'served': False}
+def mine(resource='Ore', x=11, y=7, size=1, connected=True, rail_connected=True, served=False, **extra):
+    return {'kind': 'Extractor', 'resource': resource, 'origin': {'x': x, 'y': y}, 'port': {'x': x, 'y': y - 1},
+            'size': size, 'demand': size, 'connected': connected, 'railConnected': rail_connected, 'served': served,
+            **extra}
+
+
+def prepared_expansion(data):
+    """Prepare the same immutable goal baseline the HTTP planner receives."""
+    return planner.PlannerProgress().prepare(data)[1]
 
 
 class PlanValidationTests(unittest.TestCase):
@@ -47,11 +53,22 @@ class PlanValidationTests(unittest.TestCase):
         for change in [{'goal': ''}, {'goal': 'g' * 601}, {'selectedTile': {'x': 32, 'y': 1}}, {'previousPlan': {'results': [{}] * 61}}]:
             with self.assertRaises(ValueError): planner.validate_plan_payload({**data, **change})
 
-    def test_current_revealed_mine_can_be_built_connected_and_dispatched(self):
-        result = planner.parse_plan(json.dumps(plan([action('build_extractor', 11, 7), action('connect_conduit', 11, 7),
-                                                     action('connect_rail', 11, 6), action('dispatch_train', 11, 7)])), request_data())
-        self.assertEqual(len(result['actions']), 4)
+    def test_new_mine_ends_batch_then_fresh_state_can_connect_and_dispatch(self):
+        data = request_data()
+        result = planner.parse_plan(json.dumps(plan([action('build_extractor', 11, 7)])), data)
+        self.assertEqual(result['actions'][0]['type'], 'build_extractor')
         self.assertTrue(result['planId'])
+        bounded = planner.parse_plan(json.dumps(plan([action('build_extractor', 11, 7), action('connect_conduit', 11, 7)])), data)
+        self.assertEqual([item['type'] for item in bounded['actions']], ['build_extractor'])
+        self.assertIn('real port', bounded['summary'])
+
+        built = mine(connected=False, rail_connected=False,
+                     powerRoute={'possible': True, 'cost': 12}, railRoute={'possible': True, 'cost': 18})
+        data['state'].update(buildings=[built], deposits=[], credits=500)
+        followup = planner.parse_plan(json.dumps(plan([
+            action('connect_conduit', 11, 7), action('connect_rail', 11, 6), action('dispatch_train', 11, 7)
+        ])), data)
+        self.assertEqual([item['type'] for item in followup['actions']], ['connect_conduit', 'connect_rail', 'dispatch_train'])
 
     def test_hidden_deposit_duplicate_build_and_unknown_connection_rejected(self):
         data = request_data()
@@ -74,17 +91,19 @@ class PlanValidationTests(unittest.TestCase):
         self.assertEqual((result['actions'][0]['x'], result['actions'][0]['y']), (31, 31))
 
     def test_exploration_ends_batch_before_building_unseen_future_resources(self):
-        with self.assertRaises(ValueError):
-            planner.parse_plan(json.dumps(plan([action('explore', 10, 6), action('build_extractor', 11, 7)])), request_data())
+        bounded = planner.parse_plan(json.dumps(plan([action('explore', 10, 6), action('build_extractor', 11, 7)])), request_data())
+        self.assertEqual([item['type'] for item in bounded['actions']], ['explore'])
+        self.assertIn('fresh map', bounded['nextCheck'])
         self.assertEqual(planner.parse_plan(json.dumps(plan([action('explore', 10, 6)])), request_data())['status'], 'ready')
 
     def test_auto_exploration_is_coordinate_free_and_requires_a_fresh_batch(self):
         data = request_data()
         self.assertEqual(planner.parse_plan(json.dumps(plan([action('auto_explore')])), data)['actions'][0]['type'], 'auto_explore')
         for actions in [[action('auto_explore', 20, 6)], [action('auto_explore', seconds=60)],
-                        [action('auto_explore', targetX=20, targetY=6)],
-                        [action('auto_explore'), action('build_extractor', 11, 7)]]:
+                        [action('auto_explore', targetX=20, targetY=6)]]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan(actions)), data)
+        bounded = planner.parse_plan(json.dumps(plan([action('auto_explore'), action('build_extractor', 11, 7)])), data)
+        self.assertEqual([item['type'] for item in bounded['actions']], ['auto_explore'])
         planner.parse_plan(json.dumps(plan([action('resume'), action('auto_explore')])), data)
 
     def test_auto_exploration_schema_forbids_hidden_coordinate_or_duration_targets(self):
@@ -105,7 +124,168 @@ class PlanValidationTests(unittest.TestCase):
         data['state']['buildings'] = [mine()]; data['state']['deposits'] = data['state']['deposits'][1:]
         self.assertEqual(progress.prepare(data)[1]['serverProgress']['initialVisibleOreOrigins'], first['initialVisibleOreOrigins'])
 
+    def test_expansion_goal_parses_vague_additional_and_total_counts(self):
+        data = request_data(); data['state']['buildings'] = [mine()]
+        cases = [
+            ('Build more Ore extractors and power them with solar', 'additional', 1, 2, True, False),
+            ('Build two additional Ore extractors and connect them to solar power', 'additional', 2, 3, True, False),
+            ("Build two additional Ore extractors with solar power. Do not add rails or trains.", 'additional', 2, 3, True, False),
+            ('Expand to four working Ore train routes', 'total', 3, 4, False, True),
+        ]
+        for goal, mode, additional, target, solar, service in cases:
+            with self.subTest(goal=goal):
+                spec = planner.expansion_spec(goal, data['state'])
+                self.assertEqual((spec['resource'], spec['mode']), ('Ore', mode))
+                self.assertEqual(spec['requestedAdditionalExtractors'], additional)
+                self.assertEqual(spec['targetExtractorCount'], target)
+                self.assertEqual(spec['requiresSolarCapacity'], solar)
+                self.assertEqual(spec['requiresRailService'], service)
+
+    def test_expansion_progress_preserves_baseline_and_counts_verified_buildings(self):
+        progress = planner.PlannerProgress(); data = request_data()
+        data['goal'] = 'Build two additional Ore extractors and power them with solar'
+        data['state'].update(buildings=[mine()], solarGeneration=2)
+        key, first = progress.prepare(data)
+        objective = first['serverProgress']['expansionObjective']
+        self.assertEqual(objective['initialExtractorOrigins'], [{'x': 11, 'y': 7}])
+        self.assertEqual(objective['newExtractorCount'], 0)
+        self.assertEqual(objective['targetExtractorCount'], 3)
+
+        # Proposed actions and disappearing deposit entries are not completion evidence.
+        progress.remember(key, planner.parse_plan(json.dumps(plan([action('wait', seconds=1)])), first))
+        data['state']['deposits'] = []
+        data['state']['buildings'].append(mine(x=15, y=11, size=2))
+        followup = progress.prepare(data)[1]['serverProgress']['expansionObjective']
+        self.assertEqual(followup['initialExtractorOrigins'], objective['initialExtractorOrigins'])
+        self.assertEqual(followup['newExtractorCount'], 1)
+        self.assertEqual(followup['remainingExtractorCount'], 1)
+        self.assertFalse(followup['goalSatisfied'])
+
+    def test_expansion_completion_requires_count_power_capacity_and_service_in_fresh_state(self):
+        progress = planner.PlannerProgress(); data = request_data()
+        data['goal'] = 'Build two additional Ore extractors and power them with solar'
+        data['state'].update(buildings=[mine()], solarGeneration=2)
+        key, initial = progress.prepare(data)
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), initial)
+        self.assertNotEqual(recovered['status'], 'complete')
+
+        data['state']['buildings'] = [mine(), mine(x=15, y=11, size=1), mine(x=20, y=6, connected=False)]
+        disconnected = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), disconnected)
+        self.assertNotEqual(recovered['status'], 'complete')
+
+        data['state']['buildings'][-1]['connected'] = True
+        data['state']['solarGeneration'] = 2
+        undersupplied = progress.prepare(data)[1]
+        self.assertEqual(undersupplied['serverProgress']['expansionObjective']['ratedExtractorDemand'], 3)
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), undersupplied)
+        self.assertNotEqual(recovered['status'], 'complete')
+
+        data['state']['solarGeneration'] = 4
+        complete = progress.prepare(data)[1]
+        accepted = planner.parse_plan(json.dumps(plan([], 'complete')), complete)
+        self.assertTrue(accepted['goalProgress']['goalSatisfied'])
+        self.assertEqual(accepted['goalProgress']['newExtractorCount'], 2)
+
+        service_progress = planner.PlannerProgress(); service_data = request_data()
+        service_data['goal'] = 'Build one additional working Ore extractor with rail service'
+        service_data['state']['buildings'] = [mine(served=True)]
+        service_progress.prepare(service_data)
+        service_data['state']['buildings'].append(mine(x=15, y=11, served=False))
+        unserved = service_progress.prepare(service_data)[1]
+        with self.assertRaisesRegex(ValueError, 'services are not yet working'):
+            planner.parse_plan(json.dumps(plan([], 'complete')), unserved)
+        service_data['state']['buildings'][-1]['served'] = True
+        served = service_progress.prepare(service_data)[1]
+        self.assertTrue(planner.parse_plan(json.dumps(plan([], 'complete')), served)['goalProgress']['goalSatisfied'])
+
+    def test_solar_capacity_uses_rated_building_demand_even_when_live_demand_is_zero(self):
+        data = request_data(); data['goal'] = 'Build another Ore extractor powered by solar'
+        data['state'].update(buildings=[mine(), mine(x=15, y=11, size=2)], solarGeneration=2, demand=0)
+        objective = prepared_expansion(data)['serverProgress']['expansionObjective']
+        self.assertEqual(objective['ratedExtractorDemand'], 3)
+        self.assertEqual(objective['currentSolarShortfall'], 1)
+        self.assertFalse(objective['goalSatisfied'])
+
+    def test_solar_capacity_must_precede_next_extractor_and_its_connection(self):
+        progress = planner.PlannerProgress(); data = request_data()
+        data['goal'] = 'Build another Ore extractor and power it with solar'
+        data['state'].update(buildings=[mine()], solarGeneration=2, solarSite={'x': 2, 'y': 11},
+                             solarSitePowerRoute={'possible': True, 'cost': 10}, credits=500,
+                             deposits=[{'origin': {'x': 15, 'y': 11}, 'cost': 250, 'size': 2, 'resource': 'Ore'}])
+        _, initial = progress.prepare(data)
+        with self.assertRaisesRegex(ValueError, 'Add solar capacity'):
+            planner.validate_actions([action('build_extractor', 15, 11)], initial)
+        accepted = planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11), action('build_extractor', 15, 11)])), initial)
+        self.assertEqual([item['type'] for item in accepted['actions']], ['build_solar', 'build_extractor'])
+
+        data['state']['buildings'].append(mine(x=15, y=11, size=2, connected=False,
+                                                   powerRoute={'possible': True, 'cost': 14}))
+        data['state']['deposits'] = []
+        followup = progress.prepare(data)[1]
+        with self.assertRaisesRegex(ValueError, 'Add solar capacity'):
+            planner.validate_actions([action('connect_conduit', 15, 11)], followup)
+        connected = planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11), action('connect_conduit', 15, 11)])), followup)
+        self.assertEqual([item['type'] for item in connected['actions']], ['build_solar', 'connect_conduit'])
+
+    def test_power_only_expansion_rejects_transport_but_explicit_service_goal_allows_it(self):
+        data = request_data(); data['goal'] = 'Power another Ore extractor with solar'
+        data['state'].update(buildings=[mine(rail_connected=False, railRoute={'possible': True, 'cost': 18})], deposits=[])
+        power_only = prepared_expansion(data)
+        for forbidden in [action('connect_rail', 11, 7), action('buy_train')]:
+            with self.subTest(action=forbidden['type']), self.assertRaisesRegex(ValueError, 'Transport was not requested'):
+                planner.validate_actions([forbidden], power_only)
+
+        data['goal'] = 'Connect this Ore extractor by rail and dispatch a train'
+        service_goal = prepared_expansion(data)
+        accepted = planner.parse_plan(json.dumps(plan([action('connect_rail', 11, 7)])), service_goal)
+        self.assertEqual(accepted['actions'][0]['type'], 'connect_rail')
+
+    def test_guarded_power_expansion_recovers_bad_order_across_fresh_state_batches(self):
+        progress = planner.PlannerProgress(); data = request_data()
+        data['goal'] = 'Build two additional Ore extractors and connect them to solar power'
+        data['state'].update(buildings=[], solarGeneration=2, credits=1000, frontier={'x': 10, 'y': 7},
+                             solarSite={'x': 2, 'y': 11}, solarSitePowerRoute={'possible': True, 'cost': 10})
+        key, current = progress.prepare(data)
+        recovered = planner.parse_plan(json.dumps(plan([action('connect_conduit', 11, 7)])), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['build_extractor'])
+
+        data['state']['buildings'] = [mine(connected=False, rail_connected=False,
+                                                  powerRoute={'possible': True, 'cost': 12})]
+        data['state']['deposits'] = []
+        current = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['connect_conduit'])
+
+        data['state']['buildings'][0]['connected'] = True
+        data['state']['deposits'] = [{'origin': {'x': 15, 'y': 11}, 'cost': 250, 'size': 2, 'resource': 'Ore'}]
+        current = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([action('build_extractor', 15, 11)])), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['build_solar'])
+
+        data['state']['buildings'].append({'kind': 'Solar', 'origin': {'x': 2, 'y': 11}, 'connected': True})
+        data['state']['solarGeneration'] = 4
+        current = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['build_extractor'])
+
+        data['state']['buildings'].append(mine(x=15, y=11, size=2, connected=False, rail_connected=False,
+                                                powerRoute={'possible': True, 'cost': 14}))
+        data['state']['deposits'] = []
+        current = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['connect_conduit'])
+
+        data['state']['buildings'][-1]['connected'] = True
+        current = progress.prepare(data)[1]
+        complete = planner.parse_plan(json.dumps(plan([], 'blocked')), current)
+        self.assertEqual(complete['status'], 'complete')
+        self.assertTrue(complete['goalProgress']['goalSatisfied'])
+
     def test_solar_build_includes_known_wiring_and_reconnect_does_not_repurchase(self):
+        missing_route = request_data(); missing_route['state'].update(solarSite={'x': 2, 'y': 11}, credits=200)
+        with self.assertRaisesRegex(ValueError, 'Solar connection route required'):
+            planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), missing_route)
         data = request_data(); data['state'].update(solarSite={'x': 2, 'y': 11}, credits=100,
             solarSitePowerRoute={'possible': True, 'cost': 12})
         with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), data)
@@ -156,7 +336,8 @@ class PlanValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('dispatch_train', 11, 7, targetX=5, targetY=7)])), data)
 
     def test_construction_uses_known_site_or_explicit_tile(self):
-        data = request_data(); data['state']['solarSite'] = {'x': 2, 'y': 11}
+        data = request_data(); data['state'].update(solarSite={'x': 2, 'y': 11},
+                                                   solarSitePowerRoute={'possible': True, 'cost': 12})
         planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), data)
         with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('build_solar', 20, 19)])), data)
         with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('build_plant', 11, 7)])), data)

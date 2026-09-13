@@ -134,6 +134,25 @@ class BotControlChecks
         railCommand.Start("connect_rail", mineSite); railCommand.Run();
         Check(railCommand.Status == "complete" && railCommand.Simulation.RailRoute(ArrayAt(railCommand, mineSite)) != null, "Rails use the same verified connection adapter");
 
+        var expansion = Game(1000);
+        var expansionSolar = new Cell(8, 9);
+        var firstMine = new Cell(11, 7);
+        var secondMine = new Cell(15, 11);
+        expansion.Start("build_solar", expansionSolar); expansion.Run();
+        Check(expansion.Status == "complete" && ArrayAt(expansion, expansionSolar).Connected, "Expansion solar joins the shared colony power grid");
+        expansion.Start("build_extractor", firstMine); expansion.Run();
+        Check(expansion.Status == "complete" && !ArrayAt(expansion, firstMine).Connected, "First extractor placement waits for a separate verified connection batch");
+        expansion.Start("connect_conduit", firstMine); expansion.Run();
+        Check(expansion.Status == "complete" && ArrayAt(expansion, firstMine).Connected, "First extractor connects to the shared power grid");
+        expansion.Start("build_extractor", secondMine); expansion.Run();
+        Check(expansion.Status == "complete" && !ArrayAt(expansion, secondMine).Connected, "Second extractor placement also waits for fresh connection state");
+        expansion.Start("connect_conduit", secondMine); expansion.Run();
+        var connectedMines = expansion.Simulation.Structures.Where(s => s.Kind == StructureKind.Extractor).ToList();
+        Check(expansion.Status == "complete" && connectedMines.Count == 2 && connectedMines.All(s => s.Connected), "AstraBot can power two extractors through the same colony grid");
+        Check(connectedMines.All(s => expansion.Simulation.PoweredCells.Contains(s.Port)), "Both extractor south ports visibly belong to the powered network");
+        Check(expansion.Simulation.SolarGeneration == 4 && connectedMines.Sum(s => s.Demand) == 3, "One added array covers the two extractors' rated three-power demand");
+        Check(connectedMines.All(s => expansion.Simulation.RailRoute(s) == null), "Power-only expansion does not add unrequested rail service");
+
         foreach (string interruption in new[] { "stop", "pause", "budget" })
         {
             var interrupted = Game(); interrupted.Start("build_solar", site);

@@ -1,15 +1,16 @@
 (() => {
   "use strict";
+  const EXPAND_MINES_GOAL = "Build two additional Ore extractors on revealed deposits and connect them to the colony's shared power grid. Add and connect enough solar arrays to cover their combined operating demand. Explore for Ore as needed. Do not add rails or trains. Stop only when both new extractors are powered, or explain the blocker.";
   const panel = document.createElement("section");
   panel.id = "astrabot-task"; panel.hidden = true; panel.setAttribute("aria-label", "AstraBot task plan");
   panel.innerHTML = `<header><div><strong>AstraBot</strong><small>PLAN & PLAY</small></div><div class="bot-window-controls"><button id="bot-minimize" aria-label="Minimize task panel">−</button><button id="bot-close" aria-label="Close task panel">×</button></div></header>
     <div id="bot-editor"><p class="bot-intro">Choose a tile, describe your goal, then let AstraBot work through it.</p>
     <form id="bot-goal-form"><textarea id="bot-goal" maxlength="600" rows="3" aria-label="Goal for AstraBot" placeholder="Connect this mine to power and rails, then dispatch a train…"></textarea>
     <div class="bot-target-row"><button type="button" id="bot-pick">⌖ Pick a tile</button><span id="bot-tile">Whole colony</span><button type="button" id="bot-clear" aria-label="Clear selected tile" hidden>×</button></div>
-    <div class="bot-presets"><button type="button" data-goal="Explore with the rover, find ore, build an extractor, connect power and rails, and dispatch a train. Complete the first ore delivery.">First ore route</button><button type="button" data-goal="Send the rover on automatic exploration to discover a new ore deposit. Use auto_explore and stop once a new ore deposit is fully revealed.">Discover ore</button><button type="button" data-goal="Connect the placed solar panel to the colony power grid. Use the selected tile if provided; otherwise choose the disconnected solar panel. Confirm it supplies power.">Connect solar</button><button type="button" data-goal="Expand the base to four working ore train routes from the colony depot. Explore for ore, manage power and budget, and buy locomotives as needed. Keep existing routes earning.">Four rail routes</button></div>
+    <div class="bot-presets"><button type="button" data-goal="Explore with the rover, find ore, build an extractor, connect power and rails, and dispatch a train. Complete the first ore delivery.">First ore route</button><button type="button" data-goal="Send the rover on automatic exploration to discover a new ore deposit. Use auto_explore and stop once a new ore deposit is fully revealed.">Discover ore</button><button type="button" data-goal="Connect the placed solar panel to the colony power grid. Use the selected tile if provided; otherwise choose the disconnected solar panel. Confirm it supplies power.">Connect solar</button><button type="button" id="bot-expand-mines" data-goal="${EXPAND_MINES_GOAL}">Expand mines + power</button></div>
     <button id="bot-plan" type="submit">Create plan</button></form></div>
     <div id="bot-plan-body"><h3 id="bot-title">Your next colony project</h3><p id="bot-summary">Plans use your current game screen and discovered terrain.</p><ol id="bot-actions"></ol><p id="bot-check"></p></div>
-    <p id="bot-status" role="status">You stay in control. Stop or Escape ends the takeover.</p>
+    <p id="bot-status" role="status">You stay in control. Stop or Escape ends the takeover.</p><p id="bot-progress" aria-label="Expansion progress" hidden></p>
     <footer><button id="bot-start" hidden>Start plan</button><button id="bot-stop" hidden>Stop</button><button id="bot-expand" hidden>Open task</button><button id="bot-edit" hidden>Edit goal</button></footer>
     <small class="bot-scope">Game controls only · 1 rover · 1 depot · up to 4 trains</small>`;
   document.body.append(panel);
@@ -19,6 +20,37 @@
   let checkpoint = null, enabled = true, editing = true, reviewReady = false;
   const send = (method, value) => game?.SendMessage("Astra Express", method, value);
   const message = value => { el("bot-status").textContent = value; };
+  const number = (value, fallback = 0) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+  const pointKey = point => point && Number.isInteger(point.x) && Number.isInteger(point.y) ? `${point.x},${point.y}` : "";
+  const displayNumber = value => Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+  function drawProgress() {
+    const progress = plan?.goalProgress;
+    const output = el("bot-progress");
+    if (!progress) { output.textContent = ""; output.hidden = true; return; }
+    const resource = progress.resource || "Ore";
+    let current = number(progress.currentExtractorCount);
+    let added = number(progress.newExtractorCount);
+    let linked = number(progress.connectedTargetCount);
+    let served = number(progress.servedTargetCount);
+    let demand = number(progress.ratedExtractorDemand);
+    let generation = number(progress.solarGeneration);
+    if (Array.isArray(state?.buildings)) {
+      const extractors = state.buildings.filter(building => building?.kind === "Extractor" && (building.resource || "Ore") === resource);
+      const initial = new Set((progress.initialExtractorOrigins || []).map(pointKey).filter(Boolean));
+      const relevant = progress.mode === "additional" ? extractors.filter(building => !initial.has(pointKey(building.origin))) : extractors;
+      current = extractors.length; added = relevant.length;
+      linked = relevant.filter(building => building.connected === true).length;
+      served = relevant.filter(building => building.served === true).length;
+      demand = state.buildings.filter(building => building?.kind === "Extractor").reduce((total, building) => total + number(building.demand, Math.max(1, number(building.size, 1))), 0);
+      if (typeof state.solarGeneration === "number" && Number.isFinite(state.solarGeneration) && state.solarGeneration >= 0) generation = state.solarGeneration;
+      else generation = state.buildings.filter(building => building?.kind === "Solar" && building.connected === true).reduce((total, building) => total + number(building.generation, 2), 0);
+    }
+    const target = progress.mode === "additional" ? number(progress.requestedAdditionalExtractors) : number(progress.targetExtractorCount);
+    const built = progress.mode === "additional" ? added : current;
+    output.textContent = `Mines ${built}/${target} · Linked ${linked}/${target} · Power ${displayNumber(generation)}/${displayNumber(demand)}`;
+    output.dataset.state = built >= target && linked >= target && (!progress.requiresSolarCapacity || generation >= demand) && (!progress.requiresRailService || served >= target) ? "done" : "active";
+    output.hidden = editing;
+  }
   function block() { send("CoachSetInputBlocked", !panel.hidden && (panel.matches(":hover") || panel.contains(document.activeElement)) ? "1" : "0"); }
   panel.addEventListener("pointerenter", block); panel.addEventListener("pointerleave", block);
   panel.addEventListener("focusin", block); panel.addEventListener("focusout", () => queueMicrotask(block));
@@ -28,12 +60,14 @@
     el("bot-editor").hidden = compact || running || !editing;
     el("bot-plan-body").hidden = compact || editing || !plan;
     el("bot-start").hidden = compact || editing || running || !reviewReady;
+    el("bot-start").textContent = plan?.goalProgress ? "Start expansion" : "Start plan";
     el("bot-edit").hidden = compact || running || planning || !plan;
     el("bot-edit").textContent = editing ? "Back to plan" : "Edit goal";
     el("bot-expand").hidden = !compact;
     el("bot-expand").textContent = pickPending ? "Cancel picking" : plan && !editing ? "Review plan" : "Open task";
     el("bot-expand").setAttribute("aria-expanded", String(!compact));
     el("bot-minimize").setAttribute("aria-expanded", String(!compact));
+    drawProgress();
   }
   function show(compact = false) {
     panel.hidden = false; panel.classList.toggle("compact", compact); syncView(); block();
@@ -82,7 +116,10 @@
     message("Click a tile in the game. Escape cancels picking."); minimize();
   };
   el("bot-clear").onclick = () => { send("CoachPickTile", "clear"); plan = null; reviewReady = false; editing = true; syncView(); };
-  for (const button of panel.querySelectorAll("[data-goal]")) button.onclick = () => { el("bot-goal").value = button.dataset.goal; el("bot-goal").focus(); };
+  const fillGoal = button => { el("bot-goal").value = button.dataset.goal; el("bot-goal").focus(); };
+  for (const button of panel.querySelectorAll("[data-goal]")) button.onclick = () => fillGoal(button);
+  // Direct binding keeps the primary expansion preset available to lightweight embedded clients too.
+  if (el("bot-expand-mines")) el("bot-expand-mines").onclick = () => { el("bot-goal").value = EXPAND_MINES_GOAL; el("bot-goal").focus(); };
   function drawPlan() {
     if (!plan) return;
     editing = false; reviewReady = plan.status === "ready" && !!plan.actions.length;
@@ -117,21 +154,27 @@
     active.signal.addEventListener("abort", cancelCapture);
     // Includes capture and local screen-slot waits, rather than restarting a deadline per retry.
     const timeout = setTimeout(() => active.abort(), 65000);
-    const waitForSlot = () => new Promise((resolve, reject) => {
+    const waitForSlot = delay => new Promise((resolve, reject) => {
       if (active.signal.aborted) { reject(abortError()); return; }
       const aborted = () => { clearTimeout(timer); active.signal.removeEventListener("abort", aborted); reject(abortError()); };
-      const timer = setTimeout(() => { active.signal.removeEventListener("abort", aborted); resolve(); }, 4000);
+      const timer = setTimeout(() => { active.signal.removeEventListener("abort", aborted); resolve(); }, delay);
       active.signal.addEventListener("abort", aborted, {once:true});
     });
     try {
-      for (let attempt = 0; attempt <= 6; attempt++) {
+      let config = null, slotWait = 0;
+      const loadConfig = async () => {
+        const current = window.astraBotAPI ? await window.astraBotAPI.config({signal:active.signal}) : await (await fetch("/api/coach/config", {cache:"no-store", signal:active.signal})).json();
+        if (!current.configured) throw new Error("Add an OpenAI key in AstraBot settings (gear beside Copilot), then create a plan.");
+        return current;
+      };
+      for (let attempt = 0; ; attempt++) {
         checkActive();
         message(attempt ? "Refreshing the game view and planning…" : running ? "Checking progress and planning the next steps…" : "Reading the game screen and planning…");
-        const config = window.astraBotAPI ? await window.astraBotAPI.config({signal:active.signal}) : await (await fetch("/api/coach/config", {cache:"no-store", signal:active.signal})).json();
-        checkActive();
-        if (!config.configured) throw new Error("Add an OpenAI key in AstraBot settings (gear beside Copilot), then create a plan.");
         if (!state || state.session !== session || Date.now() - stateAt > 4000) throw new Error("Game state is stale. Reconnect before planning.");
-        const image = await capture();
+        // Local capture can run during configuration lookup; upload still requires both.
+        // Reuse configuration only during this request's retries, and recapture every time.
+        const [currentConfig, image] = await Promise.all([config || loadConfig(), capture()]);
+        config = currentConfig;
         checkActive();
         if (!state || state.session !== session || Date.now() - stateAt > 4000) throw new Error("Game state is stale. Reconnect before planning.");
         const snapshot = state;
@@ -143,9 +186,12 @@
         checkActive();
         const localBusy = response.status === 429 && ["AstraBot is already reading a screen", "Wait a moment before asking again"].includes(data.error);
         if (localBusy) {
-          if (attempt === 6) throw new Error("The screen reader is still busy. Wait a moment, then create the plan again.");
+          if (slotWait >= 24000) throw new Error("The screen reader is still busy. Wait a moment, then create the plan again.");
+          const hint = data.retryAfterMs;
+          const delay = Math.min(24000 - slotWait, typeof hint === "number" && Number.isFinite(hint) && hint > 0 ? Math.max(250, Math.min(4000, hint)) : 4000);
+          slotWait += delay;
           message("Waiting for the current screen reading to finish… Stop cancels the wait.");
-          await waitForSlot();
+          await waitForSlot(delay);
           continue;
         }
         if (!response.ok) throw new Error(data.error || "Could not create a plan.");
@@ -153,8 +199,9 @@
         message(data.status === "complete" ? "Goal complete." : data.status === "blocked" ? "AstraBot needs a change before continuing." : "Review the plan, then start when ready.");
         return data;
       }
-      return null;
     } finally {
+      cancelCapture();
+      active.abort();
       clearTimeout(timeout); active.signal.removeEventListener("abort", cancelCapture);
       if (controller === active) controller = null;
       if (token === generation) { planning = false; el("bot-plan").disabled = false; if (!running) el("bot-stop").hidden = true; }
@@ -168,7 +215,7 @@
   el("bot-goal-form").onsubmit = async event => {
     event.preventDefault(); if (!enabled || running || planning) return;
     goal = el("bot-goal").value.trim(); if (!goal) { el("bot-goal").focus(); return; }
-    generation++; const token = generation; results = []; plan = null; batches = 0; reviewReady = false;
+    generation++; const token = generation; results = []; plan = null; batches = 0; reviewReady = false; drawProgress();
     checkpoint = {selectedTile:state?.pickedTile ?? null};
     minimize();
     try { await requestPlan(token); }
@@ -228,6 +275,7 @@
       session = next.session; state = next; stateAt = Date.now();
       el("bot-tile").textContent = next.pickedTile ? `Tile (${next.pickedTile.x}, ${next.pickedTile.y})` : "Whole colony";
       el("bot-clear").hidden = !next.pickedTile;
+      drawProgress();
       if (pickPending && !next.pickingTile && next.hasPickedTile && next.pickedTile) { pickPending = false; plan = null; reviewReady = false; editing = true; show(true); message("Tile selected. Open task to describe what to do here."); }
       if (actionPending && next.botActionId === actionPending.id && ["complete","failed","cancelled"].includes(next.botActionStatus)) {
         const pending = actionPending; actionPending = null; clearTimeout(pending.timer);

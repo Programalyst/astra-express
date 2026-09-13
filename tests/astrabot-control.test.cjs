@@ -13,7 +13,7 @@ const completePlan = () => ({planId:'complete',status:'complete',title:'Done',su
 const flush = async () => { for (let i=0;i<18;i++) await Promise.resolve(); };
 
 function harness({autoCapture=true}={}) {
-  const elements = new Map(), listeners = new Map(), timers = new Map(), calls = [], plans = [];
+  const elements = new Map(), listeners = new Map(), timers = new Map(), calls = [], plans = [], configs = [];
   let now=1000, timerSequence=0;
   const document = {hidden:false,activeElement:null};
   class Element {
@@ -41,7 +41,10 @@ function harness({autoCapture=true}={}) {
   const game={SendMessage(object,method,value) { calls.push({kind:'game',method,value}); if(method==='CoachCapture'&&autoCapture)queueMicrotask(()=>window.astraBotControl.screenReady(value,'jpeg')); }};
   const fetch=async(url,options={})=>{
     calls.push({kind:'fetch',url,options});
-    if(url==='/api/coach/config')return response({configured:true,token:'test-token'});
+    if(url==='/api/coach/config') {
+      const next=configs.length?configs.shift():{configured:true,token:'test-token'};
+      return next?.promise ? next.promise : next?.json ? next : response(next);
+    }
     const next=plans.length?plans.shift():completePlan();
     return next?.promise ? next.promise : next?.json ? next : response(next);
   };
@@ -54,9 +57,9 @@ function harness({autoCapture=true}={}) {
   const receive=extra=>{state={...state,...extra};api.receive(state);};receive({});
   const commands=()=>calls.filter(c=>c.kind==='game'&&c.method==='CoachBotCommand').map(c=>JSON.parse(c.value));
   const event=()=>({preventDefault(){},stopImmediatePropagation(){},stopPropagation(){}});
-  const submit=()=>{elements.get('bot-goal').value='Connect the mine';return elements.get('bot-goal-form').onsubmit(event());};
+  const submit=(goal='Connect the mine')=>{elements.get('bot-goal').value=goal;return elements.get('bot-goal-form').onsubmit(event());};
   const acknowledge=(status='complete',id=commands().at(-1)?.id)=>receive({botActionId:id,botActionStatus:status,botActionMessage:status});
-  return {api,e:id=>elements.get(id),calls,plans,submit,commands,receive,acknowledge,
+  return {api,e:id=>elements.get(id),calls,plans,configs,submit,commands,receive,acknowledge,
     start:()=>elements.get('bot-start').onclick(),stop:()=>elements.get('bot-stop').onclick(),
     advance:ms=>{now+=ms;},fireTimer:ms=>{const entry=[...timers].find(([,t])=>t.ms===ms);assert.ok(entry,`timer ${ms} exists`);timers.delete(entry[0]);entry[1].fn();},
     dispatch:(name,extra={})=>{for(const fn of listeners.get(name)||[])fn({...event(),...extra});},document};
@@ -67,6 +70,117 @@ test('creating a plan captures a frame but never starts gameplay without Start',
   assert.equal(h.commands().length,0);assert.equal(h.e('bot-start').hidden,true);h.e('bot-expand').onclick();assert.equal(h.e('bot-start').hidden,false,h.e('bot-status').textContent);assert.equal(h.api.active(),false);
   const request=h.calls.find(c=>c.url==='/api/astrabot/plan');const body=JSON.parse(request.options.body);
   assert.equal(body.image,'data:image/jpeg;base64,jpeg');assert.equal(body.state.session,'colony-1');
+});
+
+test('configuration and local capture overlap while upload waits for configuration',async()=>{
+  const h=harness(),config=deferred();h.configs.push(config);h.plans.push(readyPlan());
+  const request=h.submit();await flush();
+  assert.equal(h.calls.filter(c=>c.method==='CoachCapture').length,1);
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
+  config.resolve(response({configured:true,token:'test-token'}));await request;
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+  assert.equal(h.commands().length,0);
+});
+
+test('unconfigured server cancels concurrent capture without uploading its late frame',async()=>{
+  const h=harness({autoCapture:false});h.configs.push({configured:false,token:'test-token'});
+  const request=h.submit();await request;
+  const frame=h.calls.find(c=>c.method==='CoachCapture');h.api.screenReady(frame.value,'late');await flush();
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
+  assert.match(h.e('bot-status').textContent,/Add an OpenAI key/);
+});
+
+test('capture failure aborts a concurrent configuration lookup',async()=>{
+  const h=harness({autoCapture:false}),config=deferred();h.configs.push(config);
+  const request=h.submit();await flush();h.fireTimer(8000);await request;
+  assert.equal(h.calls.find(c=>c.url==='/api/coach/config').options.signal.aborted,true);
+  config.resolve(response({configured:true,token:'test-token'}));await flush();
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
+});
+
+test('powered mine expansion preset fills a bounded goal and shows verified progress before Start',async()=>{
+  const h=harness();h.api.open();h.e('bot-expand-mines').onclick();
+  const goal=h.e('bot-goal').value;
+  assert.match(goal,/two additional Ore extractors/);assert.match(goal,/shared power grid/);assert.match(goal,/Do not add rails or trains/);
+  assert.equal(h.calls.filter(c=>c.kind==='fetch').length,0);assert.equal(h.commands().length,0);
+  h.receive({buildings:[],solarGeneration:2});
+  h.plans.push({...readyPlan([{type:'auto_explore',x:null,y:null,reason:'Find another revealed Ore deposit.'}]),goalProgress:{
+    resource:'Ore',mode:'additional',initialExtractorOrigins:[],requestedAdditionalExtractors:2,targetExtractorCount:2,
+    currentExtractorCount:0,newExtractorCount:0,connectedTargetCount:0,ratedExtractorDemand:0,solarGeneration:2,requiresSolarCapacity:true
+  }});
+  await h.submit(goal);
+  assert.equal(h.e('bot-progress').textContent,'Mines 0/2 · Linked 0/2 · Power 2/0');
+  assert.equal(h.commands().length,0);h.e('bot-expand').onclick();
+  assert.equal(h.e('bot-start').textContent,'Start expansion');assert.equal(h.e('bot-start').hidden,false);
+  h.receive({buildings:[{kind:'Extractor',resource:'Ore',origin:{x:11,y:7},size:1,demand:1,connected:true}],solarGeneration:2});
+  assert.equal(h.e('bot-progress').textContent,'Mines 1/2 · Linked 1/2 · Power 2/1');
+});
+
+test('a transport expansion is not marked done before train service exists',async()=>{
+  const h=harness();const mine={kind:'Extractor',resource:'Ore',origin:{x:11,y:7},size:1,demand:1,connected:true,served:false};
+  h.receive({buildings:[mine],solarGeneration:2});
+  h.plans.push({...readyPlan(),goalProgress:{resource:'Ore',mode:'additional',initialExtractorOrigins:[],requestedAdditionalExtractors:1,targetExtractorCount:1,requiresSolarCapacity:true,requiresRailService:true}});
+  await h.submit('Build one additional Ore extractor with power and train service');
+  assert.equal(h.e('bot-progress').dataset.state,'active');
+  h.receive({buildings:[{...mine,served:true}]});
+  assert.equal(h.e('bot-progress').dataset.state,'done');
+});
+
+test('one Start builds and powers two mines through fresh-state continuation to completion',async()=>{
+  const h=harness();
+  const first={kind:'Extractor',resource:'Ore',origin:{x:11,y:7},size:1,demand:1,connected:false};
+  const second={kind:'Extractor',resource:'Ore',origin:{x:15,y:11},size:2,demand:2,connected:false};
+  const solar={kind:'Solar',origin:{x:8,y:9},connected:true,generation:2};
+  const snapshots=[
+    {buildings:[],solarGeneration:2,credits:500},
+    {buildings:[first],solarGeneration:2,credits:400},
+    {buildings:[{...first,connected:true}],solarGeneration:2,credits:390},
+    {buildings:[{...first,connected:true},solar],solarGeneration:4,credits:285},
+    {buildings:[{...first,connected:true},solar,second],solarGeneration:4,credits:105},
+    {buildings:[{...first,connected:true},solar,{...second,connected:true}],solarGeneration:4,credits:85}
+  ];
+  const actions=[
+    {type:'build_extractor',x:11,y:7},
+    {type:'connect_conduit',x:11,y:7},
+    {type:'build_solar',x:8,y:9},
+    {type:'build_extractor',x:15,y:11},
+    {type:'connect_conduit',x:15,y:11}
+  ];
+  const goalProgress={resource:'Ore',mode:'additional',initialExtractorOrigins:[],requestedAdditionalExtractors:2,targetExtractorCount:2,requiresSolarCapacity:true,requiresRailService:false};
+  h.receive(snapshots[0]);
+  h.plans.push(...actions.map((action,index)=>({...readyPlan([action]),planId:`expansion-${index}`,goalProgress})),{...completePlan(),goalProgress});
+  await h.submit('Build two additional Ore extractors and connect them to solar power. Do not add rails or trains.');
+  assert.equal(h.commands().length,0);
+  h.e('bot-expand').onclick();
+  const run=h.start();
+  try {
+    for(let index=0;index<actions.length;index++) {
+      await flush();
+      const commands=h.commands();
+      assert.equal(commands.length,index+1);
+      assert.equal(commands[index].type,actions[index].type);
+      assert.equal(h.e('bot-stop').hidden,false);
+      h.advance(1000);
+      h.receive({...snapshots[index+1],botActionId:commands[index].id,botActionStatus:'complete',botActionMessage:'Completed'});
+    }
+    await run;
+    const requests=h.calls.filter(c=>c.url==='/api/astrabot/plan').map(c=>JSON.parse(c.options.body));
+    assert.equal(requests.length,6);
+    assert.equal(h.calls.filter(c=>c.method==='CoachCapture').length,6);
+    for(let index=0;index<requests.length;index++) {
+      assert.deepEqual(requests[index].state.buildings,snapshots[index].buildings);
+      assert.equal(requests[index].state.credits,snapshots[index].credits);
+      assert.equal(requests[index].state.solarGeneration,snapshots[index].solarGeneration);
+      assert.equal(requests[index].previousPlan?.results.length||0,index);
+    }
+    assert.equal(h.api.diagnostics().completed,5);
+    assert.equal(h.api.diagnostics().batches,6);
+    assert.equal(h.api.active(),false);
+    assert.equal(h.e('bot-progress').textContent,'Mines 2/2 · Linked 2/2 · Power 4/3');
+    assert.equal(h.e('bot-progress').dataset.state,'done');
+    assert.equal(h.e('bot-status').textContent,'Goal complete.');
+    assert.equal(h.calls.filter(c=>c.method==='CoachBotStop').length,0);
+  } finally { if(h.api.active()) {h.stop();await run;} }
 });
 
 test('runner waits for its exact action acknowledgment and ignores duplicates',async()=>{
@@ -148,7 +262,7 @@ test('switching AstraBot off cancels active planning and ignores a late reply',a
   assert.equal(h.commands().length,0);
 });
 
-const limited = error => ({ok:false,status:429,json:async()=>({error})});
+const limited = (error,retryAfterMs) => ({ok:false,status:429,json:async()=>({error,retryAfterMs})});
 test('local busy retry captures a fresh screenshot and updated state before succeeding',async()=>{
   const h=harness({autoCapture:false});h.plans.push(limited('AstraBot is already reading a screen'),readyPlan());
   const request=h.submit();await flush();
@@ -161,7 +275,25 @@ test('local busy retry captures a fresh screenshot and updated state before succ
   const bodies=h.calls.filter(c=>c.url==='/api/astrabot/plan').map(c=>JSON.parse(c.options.body));
   assert.equal(bodies.length,2);assert.equal(bodies[0].image,'data:image/jpeg;base64,first-frame');
   assert.equal(bodies[1].image,'data:image/jpeg;base64,new-frame');assert.equal(bodies[1].state.credits,412);
+  assert.equal(h.calls.filter(c=>c.url==='/api/coach/config').length,1);
   assert.equal(h.e('bot-start').hidden,true);h.e('bot-expand').onclick();assert.equal(h.e('bot-start').hidden,false);assert.equal(h.api.diagnostics().batches,1);assert.equal(h.commands().length,0);
+});
+test('server retry hints shorten slot waits without shortening the total retry window',async()=>{
+  const h=harness();for(let i=0;i<8;i++)h.plans.push(limited('AstraBot is already reading a screen',1000));h.plans.push(readyPlan());
+  const request=h.submit();
+  for(let i=0;i<8;i++){await flush();h.receive({credits:500-i});h.fireTimer(1000);}
+  await request;
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,9);
+  assert.equal(h.calls.filter(c=>c.method==='CoachCapture').length,9);
+  assert.equal(h.calls.filter(c=>c.url==='/api/coach/config').length,1);
+  assert.equal(h.api.diagnostics().batches,1);assert.equal(h.commands().length,0);
+});
+test('server retry hints are bounded to avoid rapid loops or excessive waits',async()=>{
+  for(const [hint,delay] of [[1,250],[999999,4000],['1000',4000],[0,4000]]) {
+    const h=harness();h.plans.push(limited('AstraBot is already reading a screen',hint),readyPlan());
+    const request=h.submit();await flush();h.fireTimer(delay);await request;
+    assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,2);
+  }
 });
 test('Stop cancels a queued local-busy retry without sending another request',async()=>{
   const h=harness();h.plans.push(limited('Wait a moment before asking again'),readyPlan());
