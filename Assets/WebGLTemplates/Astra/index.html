@@ -17,18 +17,26 @@
   </style>
 </head>
 <body>
-  <canvas id="unity-canvas" width="1280" height="720" tabindex="0" aria-label="Astra Express game. Click to explore; keys 1 through 5 select construction tools; Space pauses; WASD pans; C centres colony."></canvas>
+  <canvas id="unity-canvas" width="1280" height="720" tabindex="0" aria-label="Astra Express game. Click to explore; keys 1 through 6 select construction tools; Space pauses; WASD pans; C centres colony."></canvas>
   <div id="loading"><div class="eyebrow">FRONTIER 01 / FIRST LIGHT</div><h1>ASTRA EXPRESS</h1><p>Explore the unknown. Power your colony. Build a railway.</p><progress id="progress" max="1" value="0"></progress><p id="load-status">Preparing your landing site…</p></div>
   <div id="error" role="alert"></div>
   <script>
     const canvas = document.getElementById("unity-canvas");
+    const assetBaseUrl = new URL("./", window.location.href);
+    const assetUrl = relativePath => new URL(relativePath, assetBaseUrl).href;
     const loader = document.createElement("script");
-    loader.src = "Build/{{{ LOADER_FILENAME }}}";
+    loader.src = assetUrl("Build/{{{ LOADER_FILENAME }}}");
+    loader.crossOrigin = "anonymous";
+    loader.onerror = () => {
+      const panel = document.getElementById("error");
+      panel.style.display = "block";
+      panel.textContent = "The game loader could not download. Check your connection and reload this page.";
+    };
     loader.onload = () => createUnityInstance(canvas, {
-      dataUrl: "Build/{{{ DATA_FILENAME }}}",
-      frameworkUrl: "Build/{{{ FRAMEWORK_FILENAME }}}",
-      codeUrl: "Build/{{{ CODE_FILENAME }}}",
-      streamingAssetsUrl: "StreamingAssets",
+      dataUrl: assetUrl("Build/{{{ DATA_FILENAME }}}"),
+      frameworkUrl: assetUrl("Build/{{{ FRAMEWORK_FILENAME }}}"),
+      codeUrl: assetUrl("Build/{{{ CODE_FILENAME }}}"),
+      streamingAssetsUrl: assetUrl("StreamingAssets"),
       companyName: "{{{ COMPANY_NAME }}}",
       productName: "{{{ PRODUCT_NAME }}}",
       productVersion: "{{{ PRODUCT_VERSION }}}",

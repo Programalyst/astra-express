@@ -17,8 +17,8 @@ namespace AstraExpress
     }
 
     public enum ResourceKind { Ore, Fluxite }
-    public enum StructureKind { Colony, Solar, Extractor }
-    public enum TrainPhase { Parked, ToMine, Loading, ToColony, Unloading }
+    public enum StructureKind { Colony, Solar, Extractor, PowerPlant }
+    public enum TrainPhase { Parked, ToMine, Loading, ToColony, Unloading, ReturningToDepot }
 
     public sealed class Deposit
     {
@@ -44,8 +44,10 @@ namespace AstraExpress
         public int Level = 1;
         public float Progress;
         public float SuppliedFraction;
+        public float BurnEnergy;
+        public float Generation;
         public Cell Port => new Cell(Origin.X, Origin.Y - 1);
-        public int Storage => 24 * Size;
+        public int Storage => Kind == StructureKind.PowerPlant ? 48 : 24 * Size;
         public float Demand => Size * Level;
         public float Rate => Deposit == null ? 0 : Deposit.Rate * Level;
         public bool Contains(Cell cell) => cell.X >= Origin.X && cell.X < Origin.X + Size && cell.Y >= Origin.Y && cell.Y < Origin.Y + Size;
@@ -55,6 +57,7 @@ namespace AstraExpress
     {
         public TrainPhase Phase;
         public Structure Source;
+        public Structure Destination;
         public ResourceKind Resource;
         public int Cargo;
         public int Capacity = 4;
@@ -74,6 +77,11 @@ namespace AstraExpress
         public const int Height = 22;
         public const float BatteryCapacity = 100;
         public const float Reserve = 10;
+        public const int PlantCost = 250;
+        public const int TrainCost = 150;
+        public const int MaxTrains = 4;
+        public const float PlantOutput = 8;
+        public const float FuelEnergy = 40;
         public static readonly Cell[] Directions = { new Cell(1, 0), new Cell(-1, 0), new Cell(0, 1), new Cell(0, -1) };
         public readonly bool[,] Revealed = new bool[Width, Height];
         public readonly List<Deposit> Deposits = new List<Deposit>();
@@ -82,23 +90,30 @@ namespace AstraExpress
         public readonly HashSet<Cell> Rails = new HashSet<Cell>();
         public readonly HashSet<Cell> PoweredCells = new HashSet<Cell>();
         public readonly FreightTrain Train = new FreightTrain();
+        public readonly List<FreightTrain> Trains = new List<FreightTrain>();
         public readonly Structure Colony;
         public int Credits { get; private set; } = 500;
         public float Battery { get; private set; } = BatteryCapacity;
         public float Generation { get; private set; }
+        public float SolarGeneration { get; private set; }
+        public float FuelGeneration => Structures.Sum(structure => structure.Generation);
         public float Demand { get; private set; }
         public float RoverX { get; private set; } = 7;
         public float RoverY { get; private set; } = 6;
         public int Produced { get; private set; }
         public int Sold { get; private set; }
         public int Deliveries { get; private set; }
+        public int FuelProduced { get; private set; }
+        public int FuelDelivered { get; private set; }
+        public int FuelConsumed { get; private set; }
         public int Revision { get; private set; }
         public int RevealRevision { get; private set; }
         public bool Paused;
         public string Message = "Welcome, commander. Explore east of the colony to discover your first ore deposit.";
         public bool RoverMoving => roverWaypoint < roverRoute.Count;
         public Cell RoverCell => new Cell((int)Math.Round(RoverX), (int)Math.Round(RoverY));
-        public int AccountedOre => Structures.Sum(structure => structure.Stock) + Train.Cargo + Sold;
+        public int AccountedOre => Structures.Where(structure => structure.Deposit?.Resource == ResourceKind.Ore).Sum(structure => structure.Stock) + Trains.Where(train => train.Resource == ResourceKind.Ore).Sum(train => train.Cargo) + Sold;
+        public int AccountedFuel => Structures.Where(structure => structure.Kind == StructureKind.PowerPlant || structure.Deposit?.Resource == ResourceKind.Fluxite).Sum(structure => structure.Stock) + Trains.Where(train => train.Resource == ResourceKind.Fluxite).Sum(train => train.Cargo) + FuelConsumed;
         private List<Cell> roverRoute = new List<Cell>();
         private int roverWaypoint;
 
@@ -111,11 +126,14 @@ namespace AstraExpress
             Deposits.Add(new Deposit { Origin = new Cell(8, 13), Size = 1 });
             Deposits.Add(new Deposit { Origin = new Cell(15, 11), Size = 2 });
             Deposits.Add(new Deposit { Origin = new Cell(20, 6), Size = 2 });
+            Deposits.Add(new Deposit { Origin = new Cell(13, 3), Size = 1, Resource = ResourceKind.Fluxite });
+            Deposits.Add(new Deposit { Origin = new Cell(4, 17), Size = 2, Resource = ResourceKind.Fluxite });
             Deposits.Add(new Deposit { Origin = new Cell(22, 16), Size = 3 });
             Conduits.Add(Colony.Port);
             Rails.Add(Colony.Port);
             Train.X = Colony.Port.X;
             Train.Y = Colony.Port.Y;
+            Trains.Add(Train);
             Reveal(5.5f, 7.5f, 5);
             Reveal(RoverX, RoverY, 3);
             Reconnect();
@@ -160,15 +178,15 @@ namespace AstraExpress
         public bool CanBuild(StructureKind kind, Cell requested, out Cell origin, out int size, out int cost, out string reason)
         {
             origin = requested;
-            size = kind == StructureKind.Solar ? 2 : 1;
-            cost = kind == StructureKind.Solar ? 100 : 150;
+            size = kind == StructureKind.Solar || kind == StructureKind.PowerPlant ? 2 : 1;
+            cost = kind == StructureKind.PowerPlant ? PlantCost : kind == StructureKind.Solar ? 100 : 150;
             reason = "";
             if (!IsRevealed(requested)) { reason = "Explore this ground first."; return false; }
-            if (kind != StructureKind.Solar && kind != StructureKind.Extractor) { reason = "The colony is fixed."; return false; }
+            if (kind != StructureKind.Solar && kind != StructureKind.Extractor && kind != StructureKind.PowerPlant) { reason = "The colony is fixed."; return false; }
             var deposit = DepositAt(requested);
             if (kind == StructureKind.Extractor)
             {
-                if (deposit == null) { reason = "Place an extractor on a discovered ore patch."; return false; }
+                if (deposit == null) { reason = "Place an extractor on a discovered ore or Fluxite patch."; return false; }
                 if (!FullyRevealed(deposit)) { reason = "Explore the entire patch before placing an extractor."; return false; }
                 origin = deposit.Origin;
                 size = deposit.Size;
@@ -180,7 +198,7 @@ namespace AstraExpress
                 if (!IsRevealed(cell)) { reason = "The complete footprint must be explored."; return false; }
                 if (StructureAt(cell) != null || Rails.Contains(cell) || Conduits.Contains(cell) || cell.Equals(RoverCell) || TrainOccupies(cell))
                 { reason = "Footprint occupied. Leave room for vehicles and infrastructure."; return false; }
-                if (kind == StructureKind.Solar && DepositAt(cell) != null) { reason = "Keep ore deposits free for extractors."; return false; }
+                if (kind != StructureKind.Extractor && DepositAt(cell) != null) { reason = "Keep resource deposits free for extractors."; return false; }
                 if (Structures.Any(structure => structure.Port.Equals(cell))) { reason = "Keep the connection ports clear."; return false; }
             }
             var port = new Cell(origin.X, origin.Y - 1);
@@ -189,7 +207,7 @@ namespace AstraExpress
             return true;
         }
 
-        private bool TrainOccupies(Cell cell) => Math.Abs(Train.X - cell.X) < 0.55f && Math.Abs(Train.Y - cell.Y) < 0.55f;
+        private bool TrainOccupies(Cell cell) => Trains.Any(train => Math.Abs(train.X - cell.X) < 0.55f && Math.Abs(train.Y - cell.Y) < 0.55f);
 
         public bool Build(StructureKind kind, Cell requested)
         {
@@ -204,7 +222,7 @@ namespace AstraExpress
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built. Connect its south port with conduits, then lay a railway to the colony.";
+            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port, then assign a Fluxite delivery service." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built. Connect its south port with conduits, then lay a railway to its destination.";
             return true;
         }
 
@@ -269,42 +287,65 @@ namespace AstraExpress
                 }
             }
             foreach (var structure in Structures) structure.Connected = structure.Starter || PoweredCells.Contains(structure.Port);
-            Generation = Structures.Count(structure => structure.Kind == StructureKind.Solar && structure.Connected) * 2;
+            SolarGeneration = Structures.Count(structure => structure.Kind == StructureKind.Solar && structure.Connected) * 2;
+            Generation = SolarGeneration + FuelGeneration;
         }
 
         public List<Cell> RailRoute(Structure extractor) => FindPath(Colony.Port, extractor.Port, cell => Rails.Contains(cell));
 
-        public bool Dispatch(Structure extractor)
+        public bool Dispatch(Structure extractor, Structure destination = null)
         {
             if (extractor == null || extractor.Kind != StructureKind.Extractor) return Fail("Select an extractor first.");
-            if (Train.Phase != TrainPhase.Parked) return Fail("Park the current service before choosing another mine.");
+            if (Trains.Any(train => train.Source == extractor)) return Fail("This extractor already has a train service.");
+            var available = Trains.FirstOrDefault(train => train.Phase == TrainPhase.Parked);
+            if (available == null) return Fail("No idle train. Buy a locomotive in Fleet, or park an existing service.");
+            if (extractor.Deposit.Resource == ResourceKind.Ore) destination = Colony;
+            else if (destination == null || destination.Kind != StructureKind.PowerPlant || !Structures.Contains(destination)) return Fail("Choose a power plant as this Fluxite extractor's destination.");
             var route = RailRoute(extractor);
             if (route == null) return Fail("Connect rails between the colony depot and the extractor's south port.");
-            Train.Source = extractor;
-            Train.Resource = extractor.Deposit.Resource;
-            Train.Route = route;
-            Train.ParkRequested = false;
-            BeginLeg(false);
-            Message = "Service started. The train collects ore and sells each delivery at the colony.";
+            var deliveryRoute = FindPath(destination.Port, extractor.Port, cell => Rails.Contains(cell));
+            if (deliveryRoute == null) return Fail("Connect rails from the extractor to the selected destination's south port.");
+            available.Source = extractor;
+            available.Destination = destination;
+            available.Resource = extractor.Deposit.Resource;
+            available.Route = deliveryRoute;
+            available.ParkRequested = false;
+            BeginLeg(available, false);
+            available.Leg = route;
+            Message = available.Resource == ResourceKind.Ore ? "Ore service started. Each delivery earns credits at the colony." : "Fluxite service started. Fuel goes to the plant, not the ore buyer.";
             return true;
         }
 
-        public void ParkTrain()
+        public bool BuyTrain()
         {
-            Train.ParkRequested = true;
-            if (Train.Phase == TrainPhase.Loading) BeginLeg(true);
-            Message = "Train will deliver any cargo and park at the colony. No cargo is discarded.";
+            if (Trains.Count >= MaxTrains) return Fail("Fleet is full: four locomotives maximum.");
+            if (Credits < TrainCost) return Fail($"Need {TrainCost} credits for another locomotive.");
+            Credits -= TrainCost;
+            Trains.Add(new FreightTrain { X = Colony.Port.X, Y = Colony.Port.Y });
+            Revision++;
+            Message = "Locomotive purchased. Select an unassigned extractor to start another service.";
+            return true;
         }
 
-        public bool UpgradeTrain()
+        public void ParkTrain(FreightTrain train = null)
         {
-            if (Train.CapacityLevel >= 3) return Fail("Train capacity is fully upgraded.");
-            int cost = Train.CapacityLevel * 100;
+            train = train ?? Train;
+            if (train.Phase == TrainPhase.Parked) return;
+            train.ParkRequested = true;
+            if (train.Phase == TrainPhase.Loading) ReturnToDepot(train);
+            Message = "Train will finish any cargo delivery and return to the colony. Full plants must make room before fuel unloads.";
+        }
+
+        public bool UpgradeTrain(FreightTrain train = null)
+        {
+            train = train ?? Train;
+            if (train.CapacityLevel >= 3) return Fail("Train capacity is fully upgraded.");
+            int cost = train.CapacityLevel * 100;
             if (Credits < cost) return Fail($"Need {cost} credits for this upgrade.");
             Credits -= cost;
-            Train.CapacityLevel++;
-            Train.Capacity = Train.CapacityLevel * 4;
-            Message = $"Train upgraded to {Train.Capacity} cargo. Additional capacity is used at the next loading stop.";
+            train.CapacityLevel++;
+            train.Capacity = train.CapacityLevel * 4;
+            Message = $"Train upgraded to {train.Capacity} cargo. Additional capacity is used at the next loading stop.";
             return true;
         }
 
@@ -326,12 +367,35 @@ namespace AstraExpress
             while (remaining > 0.00001f)
             {
                 float delta = Math.Min(remaining, 0.05f);
-                Battery = Math.Min(BatteryCapacity, Battery + Generation * delta);
+                StepGeneration(delta);
                 StepRover(delta);
                 StepExtractors(delta);
-                StepTrain(delta);
+                foreach (var train in Trains) StepTrain(train, delta);
                 remaining -= delta;
             }
+        }
+
+        private void StepGeneration(float delta)
+        {
+            Battery = Math.Min(BatteryCapacity, Battery + SolarGeneration * delta);
+            foreach (var plant in Structures)
+            {
+                plant.Generation = 0;
+                if (plant.Kind != StructureKind.PowerPlant || !plant.Connected || plant.Paused) continue;
+                float requested = Math.Min(PlantOutput * delta, BatteryCapacity - Battery);
+                if (requested <= 0.00001f) continue;
+                if (plant.BurnEnergy <= 0.00001f && plant.Stock > 0)
+                {
+                    plant.Stock--;
+                    FuelConsumed++;
+                    plant.BurnEnergy += FuelEnergy;
+                }
+                float generated = Math.Min(requested, plant.BurnEnergy);
+                plant.BurnEnergy -= generated;
+                plant.Generation = generated / delta;
+                Battery += generated;
+            }
+            Generation = SolarGeneration + FuelGeneration;
         }
 
         private void StepRover(float delta)
@@ -376,71 +440,99 @@ namespace AstraExpress
                 {
                     structure.Progress -= 1;
                     structure.Stock++;
-                    Produced++;
+                    if (structure.Deposit.Resource == ResourceKind.Ore) Produced++;
+                    else FuelProduced++;
                 }
             }
         }
 
         private static bool Working(Structure structure) => structure.Kind == StructureKind.Extractor && structure.Connected && !structure.Paused && structure.Stock < structure.Storage;
 
-        private void BeginLeg(bool homeward)
+        private void BeginLeg(FreightTrain train, bool homeward)
         {
-            Train.Leg = new List<Cell>(Train.Route);
-            if (homeward) Train.Leg.Reverse();
-            Train.Waypoint = 0;
-            Train.Phase = homeward ? TrainPhase.ToColony : TrainPhase.ToMine;
+            train.Leg = new List<Cell>(train.Route);
+            if (homeward) train.Leg.Reverse();
+            train.Waypoint = 0;
+            train.Phase = homeward ? TrainPhase.ToColony : TrainPhase.ToMine;
         }
 
-        private void StepTrain(float delta)
+        private void ReturnToDepot(FreightTrain train)
         {
-            if (Train.Phase == TrainPhase.Parked) return;
-            if (Train.Phase == TrainPhase.ToMine || Train.Phase == TrainPhase.ToColony)
+            train.Leg = FindPath(new Cell((int)Math.Round(train.X), (int)Math.Round(train.Y)), Colony.Port, cell => Rails.Contains(cell));
+            train.Waypoint = 0;
+            train.Phase = TrainPhase.ReturningToDepot;
+        }
+
+        private void StepTrain(FreightTrain train, float delta)
+        {
+            if (train.Phase == TrainPhase.Parked) return;
+            if (train.Phase == TrainPhase.ToMine || train.Phase == TrainPhase.ToColony || train.Phase == TrainPhase.ReturningToDepot)
             {
                 float budget = delta * 2;
-                while (budget > 0 && Train.Waypoint < Train.Leg.Count)
+                while (budget > 0 && train.Waypoint < train.Leg.Count)
                 {
-                    var target = Train.Leg[Train.Waypoint];
-                    float offsetX = target.X - Train.X;
-                    float offsetY = target.Y - Train.Y;
+                    var target = train.Leg[train.Waypoint];
+                    float offsetX = target.X - train.X;
+                    float offsetY = target.Y - train.Y;
                     float distance = (float)Math.Sqrt(offsetX * offsetX + offsetY * offsetY);
-                    if (distance < 0.0001f) { Train.Waypoint++; continue; }
+                    if (distance < 0.0001f) { train.Waypoint++; continue; }
                     float travel = Math.Min(budget, distance);
-                    Train.X += offsetX / distance * travel;
-                    Train.Y += offsetY / distance * travel;
+                    train.X += offsetX / distance * travel;
+                    train.Y += offsetY / distance * travel;
                     budget -= travel;
-                    if (travel >= distance - 0.0001f) Train.Waypoint++;
+                    if (travel >= distance - 0.0001f) train.Waypoint++;
                 }
-                if (Train.Waypoint >= Train.Leg.Count)
+                if (train.Waypoint >= train.Leg.Count)
                 {
-                    Train.Phase = Train.Phase == TrainPhase.ToMine ? TrainPhase.Loading : TrainPhase.Unloading;
-                    Train.Dwell = 1;
+                    if (train.Phase == TrainPhase.ReturningToDepot)
+                    {
+                        train.Phase = TrainPhase.Parked;
+                        train.Source = null;
+                        train.Destination = null;
+                        train.ParkRequested = false;
+                    }
+                    else if (train.Phase == TrainPhase.ToMine && train.ParkRequested) ReturnToDepot(train);
+                    else
+                    {
+                        train.Phase = train.Phase == TrainPhase.ToMine ? TrainPhase.Loading : TrainPhase.Unloading;
+                        train.Dwell = 1;
+                    }
                 }
                 return;
             }
-            Train.Dwell -= delta;
-            if (Train.Dwell > 0) return;
-            if (Train.Phase == TrainPhase.Loading)
+            train.Dwell -= delta;
+            if (train.Dwell > 0) return;
+            if (train.Phase == TrainPhase.Loading)
             {
-                if (Train.ParkRequested) { BeginLeg(true); return; }
-                int loaded = Math.Min(Train.Capacity, Train.Source.Stock);
+                if (train.ParkRequested) { ReturnToDepot(train); return; }
+                int loaded = Math.Min(train.Capacity, train.Source.Stock);
                 if (loaded == 0) return;
-                Train.Source.Stock -= loaded;
-                Train.Cargo = loaded;
-                BeginLeg(true);
+                train.Source.Stock -= loaded;
+                train.Cargo = loaded;
+                BeginLeg(train, true);
             }
             else
             {
-                if (Train.Cargo > 0 && Train.Resource == ResourceKind.Ore)
+                if (train.Cargo > 0 && train.Resource == ResourceKind.Ore)
                 {
-                    int payment = Train.Cargo * 8;
+                    int payment = train.Cargo * 8;
                     Credits += payment;
-                    Sold += Train.Cargo;
+                    Sold += train.Cargo;
                     Deliveries++;
                     Message = $"Delivery received! +{payment} credits. Explore farther for higher-yield deposits.";
-                    Train.Cargo = 0;
+                    train.Cargo = 0;
                 }
-                if (Train.ParkRequested) { Train.Phase = TrainPhase.Parked; Train.Source = null; }
-                else BeginLeg(false);
+                else if (train.Cargo > 0)
+                {
+                    int unloaded = Math.Min(train.Cargo, train.Destination.Storage - train.Destination.Stock);
+                    train.Destination.Stock += unloaded;
+                    train.Cargo -= unloaded;
+                    FuelDelivered += unloaded;
+                    if (unloaded > 0) Message = $"{unloaded} Fluxite delivered to the power plant. Fuel generates power, not credits.";
+                    if (train.Cargo > 0) return;
+                }
+                if (train.ParkRequested) ReturnToDepot(train);
+                else BeginLeg(train, false);
             }
         }
 
