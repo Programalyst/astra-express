@@ -15,6 +15,7 @@ namespace AstraExpress
         public GameObject ExtractorModel;
         public GameObject OreModel;
         public GameObject TrainModel;
+        public GameObject TerrainModel;
         public Material SurfaceTemplate;
         [SerializeField] private string diagnostics;
         public ColonySimulation Simulation { get; private set; }
@@ -25,7 +26,7 @@ namespace AstraExpress
         private Transform roverVisual;
         private readonly Dictionary<FreightTrain, Transform> trainVisuals = new Dictionary<FreightTrain, Transform>();
         private readonly Dictionary<FreightTrain, Renderer> cargoVisuals = new Dictionary<FreightTrain, Renderer>();
-        private readonly Dictionary<Cell, Renderer> ground = new Dictionary<Cell, Renderer>();
+        private readonly Dictionary<Cell, GroundTile> ground = new Dictionary<Cell, GroundTile>();
         private readonly Dictionary<Cell, GameObject> ore = new Dictionary<Cell, GameObject>();
         private readonly Dictionary<Structure, Transform> buildings = new Dictionary<Structure, Transform>();
         private readonly Dictionary<Material, Material> converted = new Dictionary<Material, Material>();
@@ -34,7 +35,6 @@ namespace AstraExpress
         private LineRenderer preview;
         private Material fogMaterial;
         private Material groundMaterial;
-        private Material alternateGround;
         private Material foundationMaterial;
         private Material powerMaterial;
         private Material darkPowerMaterial;
@@ -73,6 +73,29 @@ namespace AstraExpress
         private bool BuildingTool => tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant;
         private StructureKind BuildKind => tool == Tool.PowerPlant ? StructureKind.PowerPlant : tool == Tool.Solar ? StructureKind.Solar : StructureKind.Extractor;
 
+        private sealed class GroundTile
+        {
+            private readonly Renderer[] renderers;
+            private readonly Material[][] surfaceMaterials;
+            private readonly Material[][] hiddenMaterials;
+            private bool? revealed;
+
+            public GroundTile(GameObject tile, Material fog)
+            {
+                renderers = tile.GetComponentsInChildren<Renderer>();
+                surfaceMaterials = renderers.Select(renderer => renderer.sharedMaterials).ToArray();
+                hiddenMaterials = surfaceMaterials.Select(materials => Enumerable.Repeat(fog, materials.Length).ToArray()).ToArray();
+            }
+
+            public void SetRevealed(bool visible)
+            {
+                if (revealed == visible) return;
+                revealed = visible;
+                for (int index = 0; index < renderers.Length; index++)
+                    renderers[index].sharedMaterials = visible ? surfaceMaterials[index] : hiddenMaterials[index];
+            }
+        }
+
         private void Start()
         {
             Application.targetFrameRate = 60;
@@ -83,8 +106,7 @@ namespace AstraExpress
             worldCamera.transform.rotation = Quaternion.Euler(55, 20, 0);
             PositionCamera();
             fogMaterial = MakeMaterial(new Color(0.10f, 0.13f, 0.21f));
-            groundMaterial = MakeMaterial(new Color(0.33f, 0.32f, 0.43f));
-            alternateGround = MakeMaterial(new Color(0.35f, 0.34f, 0.46f));
+            groundMaterial = MakeMaterial(new Color(0.91f, 0.52f, 0.39f));
             foundationMaterial = MakeMaterial(new Color(0.20f, 0.25f, 0.33f));
             powerMaterial = MakeMaterial(cyan, 0.3f);
             darkPowerMaterial = MakeMaterial(new Color(0.29f, 0.41f, 0.47f));
@@ -124,8 +146,10 @@ namespace AstraExpress
                 for (int row = 0; row < ColonySimulation.Height; row++)
                 {
                     var cell = new Cell(column, row);
-                    var tile = Box("Ground " + cell, worldRoot, Position(cell, -0.22f), new Vector3(1.97f, 0.4f, 1.97f), fogMaterial);
-                    ground[cell] = tile.GetComponent<Renderer>();
+                    var tile = TerrainModel != null
+                        ? Model(TerrainModel, "Space terrain " + cell, worldRoot, Position(cell, -0.02f), 1.97f, 0.4f)
+                        : Box("Ground " + cell, worldRoot, Position(cell, -0.22f), new Vector3(1.97f, 0.4f, 1.97f), groundMaterial);
+                    ground[cell] = new GroundTile(tile, fogMaterial);
                 }
             foreach (var deposit in Simulation.Deposits)
                 foreach (var cell in ColonySimulation.Footprint(deposit.Origin, deposit.Size))
@@ -246,7 +270,7 @@ namespace AstraExpress
             if (Simulation.RevealRevision != revealRevision)
             {
                 revealRevision = Simulation.RevealRevision;
-                foreach (var pair in ground) pair.Value.sharedMaterial = Simulation.IsRevealed(pair.Key) ? ((pair.Key.X + pair.Key.Y) % 2 == 0 ? groundMaterial : alternateGround) : fogMaterial;
+                foreach (var pair in ground) pair.Value.SetRevealed(Simulation.IsRevealed(pair.Key));
                 foreach (var pair in ore) pair.Value.SetActive(Simulation.IsRevealed(pair.Key) && Simulation.DepositAt(pair.Key).Extractor == null);
             }
             if (Simulation.Revision == revision) return;
