@@ -1,5 +1,7 @@
 # Pip, the colony copilot
 
+The **Copilot On/Off** switch beside Pause turns the copilot on or off. Off hides its avatar, panel and highlights, cancels pending coaching, and stops new screen-reading requests. The choice is saved in this browser. Turning it on restores the avatar without opening the dialog.
+
 Run `Run Local.command`, open http://127.0.0.1:8090/, and click Pip in the bottom-left corner. The panel slides out without pausing the colony. Close it with ×, Escape, or the avatar. It never opens itself. “Show me” highlights the suggested tile and centres the camera if necessary; it does not construct anything or move a vehicle.
 
 Pip follows the current game state, recent player actions, selected tool, placement feedback, discoveries, connections, power, money, and train progress. Advice uses Unity's construction and path validation. Hidden ore locations are omitted from the model context. Game-state tips work immediately without an API key.

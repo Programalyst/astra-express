@@ -1,5 +1,15 @@
 #coach { --mint:#93ead5; --ink:#eaf5f3; --dim:#a3b8bb; position:fixed; z-index:20; left:18px; bottom:calc(var(--game-scale, 1) * 134px); font:14px/1.5 system-ui,sans-serif; color:var(--ink); pointer-events:none; }
 #coach[hidden] { display:none; }
+#astrabot-enable { position:fixed; z-index:45; right:calc(var(--game-scale,1) * 226px); top:calc(var(--game-scale,1) * 17px); width:calc(var(--game-scale,1) * 166px); height:calc(var(--game-scale,1) * 36px); display:flex; align-items:center; justify-content:center; gap:calc(var(--game-scale,1) * 9px); padding:0 8px; border:1px solid #537c7b; border-radius:6px; background:#102b36; color:#e7f5ee; font:600 calc(var(--game-scale,1) * 12px)/1 system-ui,sans-serif; cursor:pointer; }
+#astrabot-enable:hover { background:#1a3b45; }
+#astrabot-enable:focus-visible { outline:2px solid #a8f4da; outline-offset:3px; }
+.astrabot-toggle-state { color:#9de8d0; font-weight:400; }
+.astrabot-toggle-track { position:relative; width:calc(var(--game-scale,1) * 28px); height:calc(var(--game-scale,1) * 16px); border-radius:12px; background:#81ddc2; flex:none; }
+.astrabot-toggle-track::after { content:""; position:absolute; width:calc(var(--game-scale,1) * 10px); height:calc(var(--game-scale,1) * 10px); left:calc(var(--game-scale,1) * 15px); top:calc(var(--game-scale,1) * 3px); border-radius:50%; background:#12352f; }
+#astrabot-enable[aria-checked="false"] { border-color:#53616b; background:#192a34; color:#bfcad0; }
+#astrabot-enable[aria-checked="false"] .astrabot-toggle-state { color:#9cadb7; }
+#astrabot-enable[aria-checked="false"] .astrabot-toggle-track { background:#607680; }
+#astrabot-enable[aria-checked="false"] .astrabot-toggle-track::after { left:calc(var(--game-scale,1) * 3px); background:#d3dfe1; }
 #coach [hidden] { display:none!important; }
 #coach button,#coach input { font:inherit; }
 #coach button { cursor:pointer; }

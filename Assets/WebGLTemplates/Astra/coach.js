@@ -22,11 +22,35 @@
   buttonArt("coach-close", "", "close"); buttonArt("coach-show", "Show me", "focus");
   buttonArt("coach-next", "What next?", "ask"); buttonArt("coach-ask", "Ask", "ask");
   const prefs = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set(k,v) { try { localStorage.setItem(k,v); } catch {} } };
+  let enabled = prefs.get("astra.bot.enabled", "1") !== "0";
+  const enableButton = document.createElement("button");
+  enableButton.id = "astrabot-enable"; enableButton.type = "button";
+  enableButton.setAttribute("role", "switch"); enableButton.setAttribute("aria-label", "Colony copilot");
+  enableButton.innerHTML = '<span>Copilot</span><span class="astrabot-toggle-state"></span><span class="astrabot-toggle-track" aria-hidden="true"></span>';
+  document.body.append(enableButton);
   let game, state, candidates = [], current, fingerprint = "", contextVersion = 0, open = false, requestNumber = 0;
   let configured = false, csrf = "", busy = false, lastRequest = 0, lastStateAt = 0, controller, pendingCapture;
   let lastVisionAt = 0, lastCaptureAt = 0, lastVisionSignature = "", highlight = null, highlightUntil = 0;
   let events = [], previousState, question = "", live = prefs.get("astra.coach.live", "1") === "1";
   el("coach-live").checked = live;
+  function updateEnabledControl() {
+    enableButton.setAttribute("aria-checked", String(enabled));
+    enableButton.querySelector(".astrabot-toggle-state").textContent = enabled ? "On" : "Off";
+    enableButton.title = enabled ? "Turn the colony copilot off" : "Turn the colony copilot on";
+    root.hidden = !enabled || !state;
+  }
+  function setEnabled(value) {
+    enabled = !!value; prefs.set("astra.bot.enabled", enabled ? "1" : "0");
+    if (!enabled) { setOpen(false); configured = false; csrf = ""; }
+    updateEnabledControl();
+    window.astraBotControl?.setEnabled(enabled);
+    window.dispatchEvent(new CustomEvent("astra:enabled", {detail:enabled}));
+    if (enabled) refreshConfig();
+  }
+  enableButton.addEventListener("click", event => { event.stopPropagation(); setEnabled(!enabled); });
+  for (const name of ["pointerdown","pointerup","mousedown","mouseup","keydown","keyup","wheel"])
+    enableButton.addEventListener(name, event => event.stopPropagation());
+  updateEnabledControl();
   function send(method, value) { game?.SendMessage("Astra Express", method, value); }
   function blockInput() { send("CoachSetInputBlocked", open && (root.matches(":hover") || root.contains(document.activeElement)) ? "1" : "0"); }
   root.addEventListener("pointerenter", blockInput); root.addEventListener("pointerleave", blockInput);
@@ -37,9 +61,10 @@
     if (name === "keydown" && e.key === "Escape") { e.preventDefault(); setOpen(false); }
   });
   function setOpen(value, keepHighlight = false) {
+    if (value && !enabled) return;
     open = value; root.dataset.open = String(value); el("coach-panel").inert = !value;
     el("coach-launcher").setAttribute("aria-expanded", String(value));
-    if (value) { if (current) render(current); refreshConfig(); maybeAsk(true); }
+    if (value) { if (current) render(current); csrf = ""; refreshConfig().then(() => maybeAsk(true)); }
     else { contextVersion++; controller?.abort(); rejectCapture(); question = ""; if (!keepHighlight) { spot.hidden = true; highlight = null; } prefs.set("astra.coach.dismissed", "1"); el("unity-canvas").focus(); send("CoachSetInputBlocked", "2"); }
     blockInput();
   }
@@ -51,7 +76,7 @@
   el("coach-live").addEventListener("change", () => {
     live = el("coach-live").checked; prefs.set("astra.coach.live", live ? "1" : "0"); contextVersion++;
     if (!live) { controller?.abort(); rejectCapture(); render(candidates[0]); status("Screen reading off"); }
-    else { refreshConfig(); maybeAsk(true); }
+    else { csrf = ""; refreshConfig().then(() => maybeAsk(true)); }
   });
   function status(text) { el("coach-status").textContent = text; }
   function render(t, vision = false) {
@@ -65,7 +90,7 @@
     if (changedAction) root.querySelector(".coach-body").scrollTop = 0;
   }
   function updateSpotlight() {
-    if (!highlight || Date.now() > highlightUntil) { spot.hidden = true; return; }
+    if (!enabled || !highlight || Date.now() > highlightUntil) { spot.hidden = true; return; }
     const points = [state?.frontier, state?.solarSite, state?.rover, state?.colonyPort,
       ...(state?.buildings || []).flatMap(b => [b.origin,b.port]), ...(state?.deposits || []).map(d => d.origin)];
     const p = points.find(p => p && p.x === highlight.x && p.y === highlight.y);
@@ -93,10 +118,11 @@
   el("coach-next").addEventListener("click", () => askQuestion("What should I do next, and how?"));
   el("coach-form").addEventListener("submit", e => { e.preventDefault(); const input = el("coach-question"); if (!input.value.trim()) return; askQuestion(input.value.trim()); input.value = ""; });
   async function refreshConfig() {
+    if (!enabled) return;
     try {
       const response = await fetch("/api/coach/config", { cache:"no-store" });
       if (!response.ok) throw new Error();
-      const config = await response.json(); configured = config.configured; csrf = config.token;
+      const config = await response.json(); if (!enabled) return; configured = config.configured; csrf = config.token;
       if (!live) status("Screen reading off");
       else if (!configured) status("Vision waiting for server key");
       else if (!busy && !question) status(lastVisionAt ? "Watching while this panel is open" : "OpenAI ready · game screen only");
@@ -112,7 +138,7 @@
   }
   async function maybeAsk(force = false) {
     force = force || !!question;
-    if (!open || !live || (!configured && !force) || !csrf || !state || !game || busy || document.hidden || Date.now()-lastStateAt > 3000) return;
+    if (!enabled || !open || !live || (!configured && !force) || !csrf || !state || !game || busy || document.hidden || Date.now()-lastStateAt > 3000) return;
     if (Date.now() - lastRequest < (force ? 4000 : 12000)) return;
     if (!force && fingerprint === lastVisionSignature && Date.now() - lastVisionAt < 45000) return;
     busy = true; lastRequest = Date.now(); const version = contextVersion, signature = fingerprint;
@@ -122,13 +148,13 @@
     status(asked ? "Reading the screen to answer you…" : "Reading your game screen…");
     try {
       const image = await capture();
-      if (!open || !live || version !== contextVersion) return;
+      if (!enabled || !open || !live || version !== contextVersion) return;
       const response = await fetch("/api/coach", { method:"POST", signal:requestController.signal,
         headers:{ "Content-Type":"application/json", "X-Astra-Coach":csrf },
         body:JSON.stringify({ image, state:sentState, candidates:allowed, events:events.slice(-8), question:asked, contextVersion:version }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Vision temporarily unavailable");
-      if (!open || !live || document.hidden || version !== contextVersion || Date.now()-lastStateAt > 3000) return;
+      if (!enabled || !open || !live || document.hidden || version !== contextVersion || Date.now()-lastStateAt > 3000) return;
       if (question && question !== asked) return;
       const chosen = candidates.find(c => c.id === result.actionId);
       if (!chosen) return;
@@ -150,6 +176,7 @@
     }
   }
   window.astraCoach = {
+    enabled() { return enabled; },
     ready(instance) { game = instance; refreshConfig(); },
     receive(next) {
       const changedSession = state && next.session !== state.session;
@@ -159,7 +186,7 @@
       events = events.slice(-8); previousState = next; state = next; lastStateAt = Date.now();
       candidates = AstraCoachPolicy.advise(next); const key = AstraCoachPolicy.signature(next, candidates);
       if (key !== fingerprint) { fingerprint = key; contextVersion++; render(candidates[0]); }
-      root.hidden = false; document.documentElement.style.setProperty("--game-scale", Math.min(innerWidth/1280, innerHeight/720));
+      root.hidden = !enabled; document.documentElement.style.setProperty("--game-scale", Math.min(innerWidth/1280, innerHeight/720));
       updateSpotlight(); maybeAsk();
     },
     screenReady(id, jpeg) {
@@ -169,7 +196,7 @@
       else { lastCaptureAt = Date.now(); pending.resolve("data:image/jpeg;base64," + jpeg); }
     },
     // Read-only diagnostics for local verification, without images, prompts, or credentials.
-    diagnostics() { return { open, live, configured, busy, lastCaptureAt, lastVisionAt, contextVersion, stateConnected:!!state, tipId:current?.id }; }
+    diagnostics() { return { enabled, open, live, configured, busy, lastCaptureAt, lastVisionAt, contextVersion, stateConnected:!!state, tipId:current?.id }; }
   };
   document.addEventListener("visibilitychange", () => { if (document.hidden) { contextVersion++; controller?.abort(); rejectCapture(); } });
   setInterval(() => { if (open && !document.hidden) maybeAsk(); if (highlight) updateSpotlight(); }, 1000);
