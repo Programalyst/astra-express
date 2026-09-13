@@ -1,6 +1,6 @@
 # Astra Express
 
-**Explore a Martian frontier. Build a railway economy. Teach your colony what to do next—in plain language.**
+**Explore a Martian frontier. Ask AstraBot what it sees. Delegate the next colony project in plain language.**
 
 ![Astra Express splash art: a rover, glowing crystal deposits, and a freight train serving a Martian colony.](Assets/WebGLTemplates/Astra/loading-background.jpg)
 
@@ -8,16 +8,19 @@
 
 Astra Express is a Unity Web colony-and-logistics game inspired by **Transport Tycoon** and **Lucky Space**, built by two teammates collaborating with **Astra (GPT-6)**. Drive a rover into the fog of war, discover infinite mineral deposits, power extractors, and connect railway services to turn resources into an expanding colony.
 
-Our central experiment is **a tutorial that understands your colony, rather than a script that assumes your next click**. AstraBot can explain what to do next, show you where to do it, or carry out a player-approved plan. It turns assistance into a new way to play—not just a chat window beside the game.
+Our central experiment is **an assistant that sees the player's game, explains the situation, and helps carry out a goal**. AstraBot combines screenshot observations with exact simulation facts, visible guidance, and player-approved automation. A compact on-screen avatar supports learning the mechanics and delegating familiar work, with an accessible Copilot toggle and Stop controls.
+
+**The demo story:** natural-language intent → visual evidence → constrained plan → visible actions → verified game-state outcomes.
 
 ## Hackathon focus
 
 | Category | What we want to demonstrate |
 | --- | --- |
-| **Best example of Visual Understanding** | Visual feedback helped Astra build and debug the game; the in-game assistant receives actual game screenshots alongside current, player-visible state. |
-| **Best use of Agents API** | A stateful hosted-agent implementation for contextual coaching and bounded planning, with a game-side execution loop that lets players delegate goals such as exploration. |
+| **Best example of Visual Understanding** | Astra returns an image-derived bounding box and a short “I see…” observation, with local action candidates and screen geometry withheld during coaching inference. The UI exposes the visual evidence and its subsequent grounding check. |
+| **Best use of Agents API** | The active local runtime uses hosted sessions for coaching and planning, routes advanced work to Astra, and executes player-approved action batches through a validated Unity adapter with fresh observations and outcome checks. |
+| **A useful player experience** | Questions can lead to reviewable rover surveys or mining-outpost plans. Crosshairs explain the next click, while compact controls let the player dismiss help or stop automation. |
 
-**Judging note:** the repository includes the hosted Agents API implementation and recorded integration/playtest evidence. To ship without hosting a key-bearing backend, the current public Web client instead calls the **Responses API directly with a player-provided key**. It demonstrates the coaching and planning experience, but does **not** create hosted Agents sessions. These are distinct implementations, not interchangeable API names. The in-game model is currently `gpt-5.4-mini`; Astra/GPT-6 is our development collaborator.
+**Judging note:** the current local build uses hosted Agents API sessions through the same-origin Python server. Advisory coaching and advanced construction planning use `gpt-6-astra`; pure rover exploration and fog-reveal plans route to `gpt-5.4-mini`. The public Sites release may lag this source and still use the older direct, player-key Responses path. Its deployment record is identified separately rather than presented as Agents API evidence.
 
 ## Best example of Visual Understanding
 
@@ -36,11 +39,17 @@ Human direction → inspect scene/screenshots → edit scripts or configuration
 
 ### 2. Seeing the game while helping the player
 
-AstraBot's screen-help path captures the **actual rendered game and HUD** as a JPEG. It pairs that image with current game state, recent actions, selected tools, and validated guidance candidates. It captures the game—not the player's desktop or other applications.
+AstraBot's screen-help path captures the **actual rendered game and Unity HUD** as a JPEG. The local server receives that image alongside current game state, recent actions, selected tools, and local guidance candidates. It removes those candidates before sending the coaching perception input to Astra. Capture is limited to the game framebuffer; browser overlays and other applications are outside that image.
 
 The inputs complement each other: the screenshot provides visual and spatial context, while structured state supplies exact facts such as battery charge, credits, stock levels, power connections, and train assignments. Hidden resource coordinates are excluded from the model context; the assistant must work with the player's discoveries rather than an omniscient map.
 
+For Astra coaching, perception is deliberately separated from execution truth. Before inference the server removes the local next-action candidates, screen coordinates, UI rectangles, connection targets, route geometry, and precomputed world targets. `gpt-6-astra` must return one short **“I see…”** statement and a normalized image-derived bounding box, or explicitly report that it cannot see a reliable cue. Only after inference does the server attach the local authoritative next action and compare that box with its withheld target. The UI shows the model, Agents API backend, image-plus-state mode, frame age, latency, and whether the box passed that grounding check. Game state still guards every executable action.
+
 The response connects an observation to a concrete next step. **Show me** and **Show connection** can highlight the relevant tile, port, or control instead of leaving the player to translate generic advice into a click. These guidance controls do not spend credits or move the rover.
+
+Two overlays serve different purposes: the **Astra box** shows the model's visual observation, while the **local crosshair** marks the game-validated next click. A `GROUNDED` label means the returned box contains that withheld target point within a small tolerance. `CHECK` means it missed that target or could not be checked. This is a spatial consistency check, not independent proof that every object label or diagnosis is correct; Astra can correctly box a rover while the local next action points at a different frontier tile.
+
+The visual evidence panel appears only after a successful `gpt-6-astra` Agents coaching response. It shows the model, backend, **image + game state** mode, measured request latency, and frame age at response. The coaching perception boundary does not remove state from normal construction planning: plans retain known sites and validated routes for reliable execution.
 
 Screen-aware coaching is implemented, not just proposed. Earlier hosted-agent playtests recorded successful requests using actual game frames; the [integration record](docs/AGENTS-INTEGRATION.md#verification) separates these from synthetic-image transport checks and documents failures and corrections too. Local game-state hints remain available without an API key and are not presented as model vision.
 
@@ -60,6 +69,23 @@ Try questions such as:
 - **“Explore the map and discover new ore.”** — move from advice to an explicitly approved exploration plan.
 
 Game rules and action validation are still authored deliberately. The innovation is dynamically choosing and explaining relevant help instead of forcing every player through the same rigid sequence.
+
+### Proactive help with a clear next step
+
+Ask **“How can I find more ore?”** and AstraBot can explain the visible situation and offer **Send rover to survey**. The button fills a bounded exploration goal for review. Ask about expanding mining or building more bases and it can offer **Plan mining outposts**: powered extractors and rail services around the existing colony. The current game has one colony, one rover and one depot; extra colony bases are not a supported action.
+
+Suggestions open the task composer without spending credits or starting a plan. The player can edit the goal, pick a tile to specify “here,” create a plan, and explicitly choose Start.
+
+### Route each task to the appropriate model
+
+| Work | Active path | Visible attribution |
+| --- | --- | --- |
+| Screen coaching and visual observations | `gpt-6-astra` through hosted Agents API | Model, backend, image/state mode, latency, frame age, and evidence box |
+| Pure rover exploration, fog reveal, or ore discovery | `gpt-5.4-mini` through hosted Agents API | Model and rover-exploration route in plan review |
+| Construction, conduits, power, rails, trains, or mixed goals | `gpt-6-astra` through hosted Agents API | Model and advanced-planning route in plan review |
+| Eligible continuations of narrowly constrained mine-and-solar goals | Validated local game-state planner | Local source, without attribution to a new model call |
+
+The server routes the bounded goal using deterministic intent rules. Mixed or ambiguous goals stay on Astra. This reserves Astra calls for richer work while avoiding unnecessary inference for verified continuations; routing itself is not an Astra inference.
 
 ### From “tell me” to “do this with me”
 
@@ -83,7 +109,7 @@ This changes the player's role: **drive every step yourself, ask for help, or de
 
 ### Real integration, explicit boundaries
 
-The retained [Python transport](server/coach_server.py) uses hosted Agents sessions and event streams, with separate coaching and planning conversations. Follow-up turns reuse sessions; completion is checked against the completed root turn rather than treating partial commentary as a final answer. Session lifetimes, deadlines, retirement, and deletion retries are bounded. See the [implementation and recorded verification](docs/AGENTS-INTEGRATION.md) and [official Agents API overview](https://developers.openai.com/api/docs/guides/agents-api/overview).
+The active [Python transport](server/coach_server.py) uses hosted Agents sessions and event streams, with separate coaching and planning conversations. Server-key follow-up turns can reuse sessions; tab-key requests use isolated temporary sessions. Completion is checked against the completed root turn rather than treating partial commentary as a final answer. Session lifetimes, deadlines, retirement, and deletion retries are bounded. See the [implementation and recorded verification](docs/AGENTS-INTEGRATION.md).
 
 The agent produces **structured plans**, not native hosted function-tool calls. This implementation has no hosted execution environment, native tools, or subagents. A narrow Unity adapter executes supported game actions and checks them against the live simulation.
 
@@ -92,17 +118,35 @@ The agent produces **structured plans**, not native hosted function-tool calls. 
 - **Interruptibility:** Stop, Escape, and switching Copilot off cancel further automated actions.
 - **Failure handling:** malformed or invalid outputs do not become executable plans; unavailable AI leaves clearly labelled local hints.
 
-The current [browser transport](Assets/WebGLTemplates/Astra/astrabot-api.js) preserves this plan/replan experience using stateless Responses requests and bounded local progress history. Running the retained Python server alone does not switch that Web client back to Agents sessions. See [the planner protocol](docs/ASTRABOT-PLANNER.md) for the transport distinction and execution details.
+The current [browser transport](Assets/WebGLTemplates/Astra/astrabot-api.js) sends coaching and planning to the same-origin Python host, which owns hosted Agents sessions and the model router. See [the planner protocol](docs/ASTRABOT-PLANNER.md) for execution details and the separate public-build boundary.
 
 ## Try it as a judge
 
-1. **[Open the game](https://astra-express.leonard-lin-2003.chatgpt.site/).** Allow the initial Unity download to finish. Basic gameplay and local tutorial hints require no API key.
-2. **Explore and build.** Click to move the rover, uncover ore, place an extractor, and connect power and rails. Notice how the relevant advice changes with the colony.
-3. **Connect AI help.** Open the gear immediately left of **Copilot**, enter your own OpenAI API key, and choose **Connect for this tab**. Open AstraBot and enable **Live screen help** for screenshot-based advice.
-4. **Ask about the current situation.** Try “What should I do next?” and use **Show me** to locate the suggested action.
-5. **Delegate exploration.** Enter “Explore the map and discover new ore,” request a plan, review it, and select **Start plan**. Watch the rover reveal terrain, then use **Stop** to take back control.
+Use the [local build](#run-locally) to evaluate the current Agents routing and visual overlays. The [public game](https://astra-express.leonard-lin-2003.chatgpt.site/) is a separate release; check its [deployment record](docs/DEPLOYMENT.md) before attributing these features to it.
 
-**Key and privacy note:** the public demo keeps the key in tab memory and sends it directly to OpenAI, not to a game backend. This is a hackathon BYOK design, not a secure way to distribute a shared production secret. Use a restricted, low-budget key and revoke it after testing; browser scripts/extensions may access credentials. Reload or **Forget key** clears it. AI requests send game screenshots and state to OpenAI and incur API usage. [Details and limits](docs/COACH.md).
+1. **Connect AI help.** Open the gear immediately left of **Copilot**, enter your own OpenAI API key, and choose **Connect for this tab**, or configure the private server key. Open AstraBot with **Live screen help** enabled.
+2. **Discover ore.** Ask “How can I find more ore?” Inspect Astra's observation, image box and provenance. Choose **Send rover to survey**, create a plan, and confirm the `gpt-5.4-mini` exploration route before Start.
+3. **Stage a visible connection problem.** Once the rover reveals Ore, place an extractor and leave its conduit disconnected. Ask “This extractor isn't producing. Inspect the screen and point out the visible problem.” Check whether Astra's box identifies useful evidence and whether the local grounding check agrees. An unverified box should remain labelled as such.
+4. **Delegate the first paying route.** Open **Give AstraBot a task**, optionally select the extractor tile, and enter “Connect this extractor to power and rails so it produces and delivers ore.” Review the Astra plan and press Start. Watch the connections being built and an available idle locomotive auto-dispatch; check production and delivery outcomes.
+5. **Expand and take back control.** Try **Expand mines + power** for two additional powered extractors with sufficient solar generation. Its progress reports built mines, connected targets and available power. Stop or Escape returns control, and Copilot Off disables further assistance.
+
+The disconnected-extractor sequence is a recommended showcase scenario, not a claim of a completed visual-diagnosis benchmark. Coaching and task execution currently remain separate, explicit player flows.
+
+## Evidence from the latest local update
+
+The 13 September 2026 verification separated automated correctness checks from real model observations:
+
+| Check | Observed result | What it establishes |
+| --- | --- | --- |
+| Backend and browser checks | 75 Python tests and 105 JavaScript tests passed | Routing, credential boundaries, structured output, withheld perception inputs, and review-before-execution behavior |
+| Simulation and control checks | 186 scenarios, 46,582 invariants, 24 exploration assertions, and 37 bot-control checks passed | Game rules and bounded action execution under the tested cases |
+| Rebuilt Unity Web player | Built successfully and opened locally | The updated browser/game integration loads |
+| Real Astra coaching | Three completed hosted calls with no failures recorded at the checkpoint; displayed replies measured about 12–17 seconds | The active browser → local server → Astra Agents path accepted real game frames and returned visible evidence |
+| Proactive task handoff | “Send rover to survey” opened a prefilled composer without initiating gameplay | The suggestion-to-review interaction works |
+
+In the live checks, Astra boxed the rover or Explore control while the withheld next-click target was a frontier tile. Those boxes were visibly labelled **CHECK**, which correctly exposed the mismatch. The prompt was then refined to prefer a fog boundary for discovery questions and the player was rebuilt; that final refinement has not yet been confirmed by a subsequent successful live read. These observations support the integration and honest evidence display, not a claim of universal visual accuracy.
+
+**Key and privacy note:** the current local runtime can use a private server key or a player key kept in tab memory and forwarded only to its loopback server for isolated hosted sessions. The older public demo sends its tab key directly to OpenAI. Neither path distributes a shared production secret. Use a restricted, low-budget key and revoke it after testing; AI requests send game screenshots and state to OpenAI and incur API usage. [Details and limits](docs/COACH.md).
 
 The repository may be ahead of the public build; [deployment records](docs/DEPLOYMENT.md) identify the published version.
 
@@ -133,7 +177,7 @@ workspace/
     └── com.gamenami.unity-semantic-bridge/
 ```
 
-Make that package available before opening the project. Open `Assets/Scenes/AstraExpress.unity` and enter Play mode for gameplay iteration. The browser copilot UI requires a Web build: choose **Astra Express → Build Web**, then run `bash "Run Local.command"` with Python 3 installed and visit `http://127.0.0.1:8090/`. The current Web client still uses its direct, tab-key API flow when served locally.
+Make that package available before opening the project. Open `Assets/Scenes/AstraExpress.unity` and enter Play mode for gameplay iteration. The browser copilot UI requires a Web build: choose **Astra Express → Build Web**, then run `bash "Run Local.command"` with Python 3 installed and visit `http://127.0.0.1:8090/`. This local host serves both the game and the hosted Agents API bridge.
 
 ## Explore the implementation
 

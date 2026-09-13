@@ -72,6 +72,14 @@ test('creating a plan captures a frame but never starts gameplay without Start',
   assert.equal(body.image,'data:image/jpeg;base64,jpeg');assert.equal(body.state.session,'colony-1');
 });
 
+test('plan review shows which model AstraBot routed the task to',async()=>{
+  const h=harness();
+  h.plans.push({...readyPlan(),model:'gpt-5.4-mini',modelRoute:'rover-exploration'}); await h.submit('Discover ore with the rover'); h.e('bot-expand').onclick();
+  assert.equal(h.e('bot-model').hidden,false); assert.equal(h.e('bot-model').textContent,'ROUTED · GPT-5.4 MINI · ROVER EXPLORATION');
+  h.plans.push({...readyPlan(),model:'gpt-6-astra',modelRoute:'advanced-visual'}); await h.submit('Connect the mine conduit'); h.e('bot-expand').onclick();
+  assert.equal(h.e('bot-model').textContent,'ROUTED · GPT-6 ASTRA · VISUAL BUILD PLANNING');
+});
+
 test('configuration and local capture overlap while upload waits for configuration',async()=>{
   const h=harness(),config=deferred();h.configs.push(config);h.plans.push(readyPlan());
   const request=h.submit();await flush();
@@ -251,6 +259,17 @@ test('switching AstraBot off hides its planner without cancelling manual game co
   assert.equal(h.calls.filter(c=>c.method==='CoachBotStop').length,0);
   await h.submit();assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
   h.api.setEnabled(true);h.api.open();assert.equal(h.e('astrabot-task').hidden,false);
+});
+
+test('a proactive coaching suggestion prefills a reviewable task without planning or starting it',()=>{
+  const h=harness(); const suggestion='Send the rover to uncover fog and discover Ore.';
+  h.api.open(suggestion);
+  assert.equal(h.e('astrabot-task').hidden,false);
+  assert.equal(h.e('bot-goal').value,suggestion);
+  assert.equal(h.e('bot-editor').hidden,false);
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
+  assert.equal(h.commands().length,0);
+  assert.match(h.e('bot-status').textContent,/review/i);
 });
 
 test('switching AstraBot off cancels active planning and ignores a late reply',async()=>{

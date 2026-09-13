@@ -2,15 +2,15 @@
 
 ## Current Web transport
 
-The current Web template calls OpenAI's Responses endpoint directly with a player-provided, tab-only key; it does not call the Python backend. See [COACH.md](COACH.md) for setup and credential risks. `astrabot-api.js` retains `/api/astrabot/plan` only as an internal operation selector, not a network destination. `astrabot-planning.js` validates the same bounded action schema and economic constraints locally, maintains up to four goal histories for ten minutes, and assigns a local plan ID. Review/Start/Stop and Unity's runtime checks are unchanged. The generated browser contract matches the existing Python rules/schema. The following sections document the retained legacy Python/Agents implementation and its plan format, not the current browser transport.
+The current Web template sends `POST /api/astrabot/plan` to the same-origin Python server. Pure rover exploration, fog-reveal and ore-discovery goals route to `gpt-5.4-mini`; goals involving buildings, extractors, solar, power, conduits, rail, trains or other ambiguous work route to `gpt-6-astra`. Both models run through hosted OpenAI Agents API sessions. A narrowly recognized Ore-and-solar goal can continue with a server-derived game-state step after a matching hosted batch has been completed and verified; the conditions are described below. Neither path executes actions itself: the browser's game-scoped adapter owns start/stop, visible execution and simulation acknowledgments. This is not OpenAI's native computer-use tool and provides no desktop, browser navigation, shell or arbitrary-code control.
 
-The retained Python `POST /api/astrabot/plan` endpoint uses the genuine hosted OpenAI Agents API for the initial plan and for general natural-language goals. It uses the configured model and server-side key. A narrowly recognized Ore-and-solar goal can continue with a server-derived game-state step after a matching hosted batch has been completed and verified; the conditions are described below. Neither path executes actions itself: the browser's game-scoped adapter owns start/stop, visible execution and simulation acknowledgments. This is not OpenAI's native computer-use tool and provides no desktop, browser navigation, shell or arbitrary-code control. The current direct-browser transport does not use this endpoint or its local continuation optimization.
+`astrabot-planning.js` still provides defense-in-depth validation of the bounded action schema and economic constraints. Review/Start/Stop and Unity's runtime checks remain authoritative. The generated browser contract matches the Python rules and schemas.
 
 The hosted API also supports [application function tools](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), using `requires_action` and `tool_result` events. This implementation deliberately uses a structured plan/replan contract instead of claiming that a JSON plan is a native tool call. It runs with [no hosted execution environment](https://developers.openai.com/api/docs/guides/agents-api/architecture), no tools and no subagents.
 
 ## Protocol
 
-Read `GET /api/astrabot/config` (an alias of `/api/coach/config`) and send its local token in `X-Astra-Coach`, with the same local-origin policy as AstraBot. Configuration adds `plannerAvailable: true`; it never exposes the OpenAI key. Its process-local diagnostics include `stats.localPlansCompleted`, `stats.upstreamPlansCompleted`, and `stats.lastPlanTiming`, whose `source` is `game-state` or `agents-api` and whose `durationMs` covers server handling of the latest successful plan. These counters and timings are diagnostics, not an end-to-end latency benchmark.
+Read `GET /api/astrabot/config` (an alias of `/api/coach/config`) and send its local token in `X-Astra-Coach`, with the same local-origin policy as AstraBot. Configuration adds `plannerAvailable: true` and a `routing` map; it never exposes the OpenAI key. Its process-local diagnostics include per-route counts and `stats.lastPlanTiming`, whose `source`, `model` and `route` identify the latest successful plan. `durationMs` covers server handling only. These counters and timings are diagnostics, not an end-to-end latency benchmark.
 
 Request fields:
 
@@ -27,6 +27,8 @@ Response fields:
 {
   "planId": "server-generated identifier",
   "planSource": "agents-api",
+  "model": "gpt-6-astra",
+  "modelRoute": "advanced-visual",
   "title": "Next game actions",
   "summary": "What this batch will achieve",
   "status": "ready",
@@ -43,7 +45,7 @@ Response fields:
 
 `ready` requires 1–6 actions. `complete` and `blocked` contain no actions. Completion is a model judgment about the current state, not proof that proposed steps ran. The executor must inspect acknowledgments and fresh state. A server error contains no executable plan and starts no actions.
 
-`planSource` distinguishes a hosted `agents-api` result from a verified local `game-state` continuation. For a recognized extractor-expansion goal, the response also includes `goalProgress`. This is derived from the latest game state and reports the fixed starting count, requested new or total count, connected target mines, rated extractor demand, connected solar generation and whether the goal is verified complete.
+`planSource` distinguishes a hosted `agents-api` result from a verified local `game-state` continuation. `model` and `modelRoute` are server-owned evidence of the selected route; hosted routes are `rover-exploration` or `advanced-visual`, while a safe deterministic continuation reports `verified-game-state`. For a recognized extractor-expansion goal, the response also includes `goalProgress`. This is derived from the latest game state and reports the fixed starting count, requested new or total count, connected target mines, rated extractor demand, connected solar generation and whether the goal is verified complete.
 
 Every action has the same fields; unused fields are null. The output schema uses separate action branches so irrelevant destination fields are forbidden:
 
@@ -90,7 +92,7 @@ The latest live browser run completed the exact preset after the first Agents AP
 
 ## Automatic exploration, connected solar and mine expansion
 
-For “automatically explore and discover new ores,” the hosted agent can return `auto_explore` with all coordinate, locomotive and duration fields null. On **Start plan**, the game surveys reachable revealed ground, selects a fog boundary with useful visibility gain, and issues adjacent revealed rover steps. It does not examine hidden resource positions or hidden ramps when choosing destinations. Freshly fully revealed Ore ends the action; Fluxite is reported separately. Each batch lasts at most 55 real seconds and keeps 10 battery in reserve. Pause, Stop, Escape and the copilot off control halt rover movement through the existing cancellation adapter. A new screenshot is required before extraction or another survey batch. This remains the game-scoped adapter, not a native desktop computer-use tool.
+For “automatically explore and discover new ores,” the request routes to `gpt-5.4-mini` and the hosted agent can return `auto_explore` with all coordinate, locomotive and duration fields null. On **Start plan**, the game surveys reachable revealed ground, selects a fog boundary with useful visibility gain, and issues adjacent revealed rover steps. It does not examine hidden resource positions or hidden ramps when choosing destinations. Freshly fully revealed Ore ends the action; Fluxite is reported separately. Each batch lasts at most 55 real seconds and keeps 10 battery in reserve. Pause, Stop, Escape and the copilot off control halt rover movement through the existing cancellation adapter. A new screenshot is required before extraction or another survey batch. Adding extractor, power, conduit, rail or transport work to the same goal routes the full task to `gpt-6-astra`. This remains the game-scoped adapter, not a native desktop computer-use tool.
 
 `build_solar` now means place the array, then visibly connect its actual south port. Budget 100 credits plus the known `solarSitePowerRoute.cost` or `pickedSitePowerRoute.cost`; `possible:false` rejects the combined action. Reconnecting an existing array charges only its known missing conduit cost. The live simulation rechecks route/cost before laying it. If construction succeeds but a changed route or budget prevents wiring, the array is retained and the action fails with an explicit connection message. Operational power is reported only once `Connected` is true; a later `connect_conduit` is idempotent.
 

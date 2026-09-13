@@ -10,7 +10,7 @@
 .bot-target-row{display:flex;align-items:center;gap:10px;margin:8px 0}.bot-target-row span{color:#a5d3c8;font-size:12px}
 .bot-presets{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0}#astrabot-task .bot-presets button{font-size:11px;padding:6px 8px;background:#193b45}
 #astrabot-task #bot-plan,#astrabot-task #bot-start{background:#b7f1d4;color:#12352e;border-color:#c5ffe4}#bot-plan{width:100%}
-#bot-plan-body h3{margin:14px 0 4px;font-size:17px}#bot-actions{padding-left:22px;margin:10px 0}#bot-actions li{padding:4px 0;color:#bcd5d7;font-size:13px}
+#astrabot-task #bot-model{display:inline-block;margin:10px 0 0;padding:4px 7px;border:1px solid #426d70;border-radius:999px;background:#0c252d;color:#9fe1d1;font:700 9px/1.2 system-ui,sans-serif;letter-spacing:.08em}#bot-plan-body h3{margin:8px 0 4px;font-size:17px}#bot-actions{padding-left:22px;margin:10px 0}#bot-actions li{padding:4px 0;color:#bcd5d7;font-size:13px}
 #bot-actions li[data-state=active]{color:#ffd394}#bot-actions li[data-state=done]{color:#95e6bc}#bot-actions li[data-state=done]::after{content:' ✓'}#bot-actions li[data-state=failed]{color:#ffb3a2}
 #astrabot-task #bot-status{border-top:1px solid #38545f;padding-top:9px;color:#d6e5df}#astrabot-task #bot-progress{margin:6px 0 0;padding:6px 8px;border:1px solid #386568;border-radius:8px;background:#0b2028;color:#a9dcca;font:600 11px/1.35 system-ui,sans-serif;font-variant-numeric:tabular-nums}#astrabot-task #bot-progress[data-state=done]{border-color:#57977b;color:#bff4d1}#astrabot-task footer{display:flex;gap:8px;margin-top:10px}
 #astrabot-task #bot-stop{background:#714137;border-color:#ad7564;color:#ffebe1}.bot-scope{display:block;margin-top:10px;font-size:10px;color:#8dafb5}

@@ -9,7 +9,7 @@
     <div class="bot-target-row"><button type="button" id="bot-pick">⌖ Pick a tile</button><span id="bot-tile">Whole colony</span><button type="button" id="bot-clear" aria-label="Clear selected tile" hidden>×</button></div>
     <div class="bot-presets"><button type="button" data-goal="Explore with the rover, find ore, build an extractor, connect power and rails, and dispatch a train. Complete the first ore delivery.">First ore route</button><button type="button" data-goal="Send the rover on automatic exploration to discover a new ore deposit. Use auto_explore and stop once a new ore deposit is fully revealed.">Discover ore</button><button type="button" data-goal="Connect the placed solar panel to the colony power grid. Use the selected tile if provided; otherwise choose the disconnected solar panel. Confirm it supplies power.">Connect solar</button><button type="button" id="bot-expand-mines" data-goal="${EXPAND_MINES_GOAL}">Expand mines + power</button></div>
     <button id="bot-plan" type="submit">Create plan</button></form></div>
-    <div id="bot-plan-body"><h3 id="bot-title">Your next colony project</h3><p id="bot-summary">Plans use your current game screen and discovered terrain.</p><ol id="bot-actions"></ol><p id="bot-check"></p></div>
+    <div id="bot-plan-body"><p id="bot-model" hidden></p><h3 id="bot-title">Your next colony project</h3><p id="bot-summary">Plans use your current game screen and discovered terrain.</p><ol id="bot-actions"></ol><p id="bot-check"></p></div>
     <p id="bot-status" role="status">You stay in control. Stop or Escape ends the takeover.</p><p id="bot-progress" aria-label="Expansion progress" hidden></p>
     <footer><button id="bot-start" hidden>Start plan</button><button id="bot-stop" hidden>Stop</button><button id="bot-expand" hidden>Open task</button><button id="bot-edit" hidden>Edit goal</button></footer>
     <small class="bot-scope">Game controls only · 1 rover · 1 depot · up to 4 trains</small>`;
@@ -123,6 +123,13 @@
   function drawPlan() {
     if (!plan) return;
     editing = false; reviewReady = plan.status === "ready" && !!plan.actions.length;
+    const routed = el("bot-model");
+    const modelName = plan.model === "gpt-5.4-mini" ? "GPT-5.4 MINI" : plan.model === "gpt-6-astra" ? "GPT-6 ASTRA" : String(plan.model || "").toUpperCase();
+    if (plan.modelRoute === "rover-exploration") routed.textContent = `ROUTED · ${modelName || "GPT-5.4 MINI"} · ROVER EXPLORATION`;
+    else if (plan.modelRoute === "advanced-visual") routed.textContent = `ROUTED · ${modelName || "GPT-6 ASTRA"} · VISUAL BUILD PLANNING`;
+    else if (plan.modelRoute === "verified-game-state") routed.textContent = "ROUTED · VERIFIED GAME STATE";
+    else routed.textContent = "";
+    routed.hidden = !routed.textContent;
     el("bot-title").textContent = plan.title;
     el("bot-summary").textContent = plan.summary;
     el("bot-check").textContent = plan.nextCheck || "";
@@ -267,7 +274,14 @@
   window.astraBotControl = {
     ready(instance) { game = instance; enabled = window.astraCoach?.enabled?.() !== false; },
     setEnabled(value) { enabled = !!value; if (!enabled) { stop("AstraBot is switched off."); close(); } },
-    open() { if (enabled) show(running || planning || pickPending); },
+    open(prefill) {
+      if (!enabled) return;
+      if (typeof prefill === "string" && prefill.trim() && !running && !planning) {
+        el("bot-goal").value = prefill.trim(); plan = null; reviewReady = false; editing = true;
+        message("Suggested task is ready. Review it, then create a plan."); show(false); el("bot-goal").focus(); return;
+      }
+      show(running || planning || pickPending);
+    },
     active() { return running || planning; },
     receive(next) {
       next = {...next, pickedTile:next.hasPickedTile ? next.pickedTile : null};

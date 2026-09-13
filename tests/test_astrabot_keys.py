@@ -6,7 +6,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from unittest.mock import patch
 import test_coach_server as fixtures
-from test_coach_server import coach, payload, events, ANSWER
+from test_coach_server import coach, payload, events, ANSWER, coaching_body
 
 KEY = 'sk-' + 'fake-key-for-transport-tests-' * 3
 
@@ -26,14 +26,16 @@ class KeyHTTPTests(unittest.TestCase):
 
     def test_check_uses_non_generating_model_lookup_without_saving_or_echoing_key(self):
         before = (self.project / 'server/.env').read_bytes()
-        with patch.object(coach, 'urlopen', return_value=io.BytesIO(b'{"id":"gpt-5.4-mini"}')) as upstream:
+        replies = [io.BytesIO(b'{"id":"gpt-6-astra"}'), io.BytesIO(b'{"id":"gpt-5.4-mini"}')]
+        with patch.object(coach, 'urlopen', side_effect=replies) as upstream:
             code, body = self.request('/api/coach/key', {}, self.headers())
         self.assertEqual((code, json.loads(body)), (200, {'verified':True}))
-        req = upstream.call_args.args[0]
-        self.assertEqual(req.full_url, 'https://api.openai.com/v1/models/gpt-5.4-mini')
-        self.assertEqual(req.get_method(), 'GET')
-        self.assertEqual(req.get_header('Authorization'), 'Bearer ' + KEY)
-        self.assertIsNone(req.data)
+        requests = [call.args[0] for call in upstream.call_args_list]
+        self.assertEqual([req.full_url for req in requests], ['https://api.openai.com/v1/models/gpt-6-astra', 'https://api.openai.com/v1/models/gpt-5.4-mini'])
+        for req in requests:
+            self.assertEqual(req.get_method(), 'GET')
+            self.assertEqual(req.get_header('Authorization'), 'Bearer ' + KEY)
+            self.assertIsNone(req.data)
         self.assertEqual((self.project / 'server/.env').read_bytes(), before)
         config = json.loads(self.request('/api/coach/config')[1])
         self.assertTrue(config['acceptsTabKey']); self.assertFalse(config['configured'])
@@ -54,7 +56,9 @@ class KeyHTTPTests(unittest.TestCase):
         with patch.object(coach, 'urlopen', side_effect=[events(), io.BytesIO(b'{"deleted":true}')]) as upstream:
             code, body = self.request('/api/coach', payload(), self.headers())
             with self.server.vision_slot: pass
-        self.assertEqual((code,json.loads(body)), (200,ANSWER))
+        self.assertEqual(code,200)
+        self.assertEqual(coaching_body(body), {**ANSWER, 'grounding':{'status':'unavailable','method':'no-visible-box'},
+                                               'planSource':'agents-api','model':'gpt-6-astra','modelRoute':'visual-coach'})
         self.assertEqual(len(upstream.call_args_list),2)
         calls = [c.args[0] for c in upstream.call_args_list]
         self.assertEqual(calls[0].full_url,'https://api.openai.com/v1/agents/sessions')
@@ -108,7 +112,7 @@ class KeyHTTPTests(unittest.TestCase):
 
     def test_followup_without_override_uses_only_the_original_server_key(self):
         (self.project / 'server/.env').write_text('OPENAI_API_KEY=server-test-key\n')
-        with patch.object(coach, 'urlopen', return_value=io.BytesIO(b'{"id":"gpt-5.4-mini"}')):
+        with patch.object(coach, 'urlopen', side_effect=[io.BytesIO(b'{"id":"gpt-6-astra"}'), io.BytesIO(b'{"id":"gpt-5.4-mini"}')]):
             self.assertEqual(self.request('/api/coach/key',{},self.headers())[0],200)
         with patch.object(coach, 'urlopen', return_value=events()) as upstream:
             code, _ = self.request('/api/coach',payload(),{'X-Astra-Coach':self.server.token})
