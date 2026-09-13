@@ -21,6 +21,7 @@ This revision replaces the earlier fixed-industry, refinery, food, and gate scen
 - One starting solar installation regenerates power. More panels increase generation speed.
 - Discovered ore patches support resource extractors.
 - The world uses a square grid. Low-yield 1 by 1 deposits lie near the colony, higher-yield 2 by 2 deposits farther away, and the highest-yield 3 by 3 deposits in more distant areas.
+- The map has two elevations, connected by straight ramp passes. Hillsides cannot be traversed or built on. Buildings and their south ports need flat, equal-height ground; rails and conduits cross elevations only through ramps. No NavMesh, bridges, tunnels, or terraforming are included.
 - All resource deposits are infinite. Exploration unlocks higher production rates while established mines remain useful indefinitely.
 - Extractors must connect to the solar and colony electrical network through power conduits.
 - A shared colony battery supplies rover movement and ongoing extractor consumption.
@@ -169,7 +170,7 @@ Start with a colony, rover, one solar installation, credits, and a free small tr
 | Battery capacity and starting charge | 100 power |
 | Solar generation | 2 power per second per connected installation |
 | Solar installation cost | 100 credits |
-| Rover movement | 2 power per tile, up to 2 tiles per second |
+| Rover movement | 2 power per tile-equivalent of surface distance, up to 2 surface tiles per second; ramps are slightly longer |
 | Colony and rover reveal radii | 4 tiles and 3 tiles |
 | Starter 1 by 1 extractor cost | 150 credits |
 | Starter 1 by 1 extractor output | 1 ore every 2 seconds |

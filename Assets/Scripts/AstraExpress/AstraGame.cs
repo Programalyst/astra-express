@@ -16,6 +16,8 @@ namespace AstraExpress
         public GameObject OreModel;
         public GameObject TrainModel;
         public GameObject TerrainModel;
+        public GameObject RampModel;
+        public GameObject HillsideModel;
         public Material SurfaceTemplate;
         [SerializeField] private string diagnostics;
         public ColonySimulation Simulation { get; private set; }
@@ -27,6 +29,7 @@ namespace AstraExpress
         private readonly Dictionary<FreightTrain, Transform> trainVisuals = new Dictionary<FreightTrain, Transform>();
         private readonly Dictionary<FreightTrain, Renderer> cargoVisuals = new Dictionary<FreightTrain, Renderer>();
         private readonly Dictionary<Cell, GroundTile> ground = new Dictionary<Cell, GroundTile>();
+        private readonly Dictionary<Collider, Cell> terrainColliders = new Dictionary<Collider, Cell>();
         private readonly Dictionary<Cell, GameObject> ore = new Dictionary<Cell, GameObject>();
         private readonly Dictionary<Structure, Transform> buildings = new Dictionary<Structure, Transform>();
         private readonly Dictionary<Material, Material> converted = new Dictionary<Material, Material>();
@@ -136,7 +139,7 @@ namespace AstraExpress
         {
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             worldRoot = new GameObject("Colony world").transform;
-            ground.Clear(); ore.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
+            ground.Clear(); terrainColliders.Clear(); ore.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
             selected = null; trainSelected = false; routeStart = null; tool = Tool.Explore;
             fuelDestination = null; selectedTrainIndex = 0; confirmRestart = false;
             Simulation = new ColonySimulation();
@@ -146,9 +149,7 @@ namespace AstraExpress
                 for (int row = 0; row < ColonySimulation.Height; row++)
                 {
                     var cell = new Cell(column, row);
-                    var tile = TerrainModel != null
-                        ? Model(TerrainModel, "Space terrain " + cell, worldRoot, Position(cell, -0.02f), 1.97f, 0.4f)
-                        : Box("Ground " + cell, worldRoot, Position(cell, -0.22f), new Vector3(1.97f, 0.4f, 1.97f), groundMaterial);
+                    var tile = CreateTerrain(cell);
                     ground[cell] = new GroundTile(tile, fogMaterial);
                 }
             foreach (var deposit in Simulation.Deposits)
@@ -227,8 +228,43 @@ namespace AstraExpress
             return holder;
         }
 
-        private static Vector3 Position(Cell cell, float height = 0) => Position(cell.X, cell.Y, height);
-        private static Vector3 Position(float column, float row, float height = 0) => new Vector3(column * 2, height, row * 2);
+        private GameObject CreateTerrain(Cell cell)
+        {
+            TerrainKind kind = Simulation.Terrain.Kind(cell);
+            var prefab = kind == TerrainKind.Ramp ? RampModel : kind == TerrainKind.Hillside ? HillsideModel : TerrainModel;
+            float baseHeight = Simulation.Terrain.Elevation(cell) * TerrainGrid.LevelHeight;
+            var tile = Model(prefab, kind + " terrain " + cell, worldRoot, new Vector3(cell.X * 2, baseHeight - 0.02f, cell.Y * 2), 2, TerrainGrid.LevelHeight);
+            if (kind != TerrainKind.Flat)
+            {
+                var renderers = tile.GetComponentsInChildren<Renderer>();
+                var bounds = renderers[0].bounds;
+                foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+                tile.transform.localScale = new Vector3(1, TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), 1);
+                tile.transform.localRotation = Quaternion.Euler(0, -90, 0);
+            }
+            else
+            {
+                tile.transform.localScale = new Vector3(0.985f, 1, 0.985f);
+                if (baseHeight > 0) Box("Plateau bedrock", tile.transform, new Vector3(0, -baseHeight * 0.5f - 0.04f, 0), new Vector3(2, baseHeight, 2), groundMaterial);
+            }
+            foreach (var filter in tile.GetComponentsInChildren<MeshFilter>())
+            {
+                var collider = filter.gameObject.AddComponent<MeshCollider>();
+                collider.sharedMesh = filter.sharedMesh;
+                terrainColliders[collider] = cell;
+            }
+            return tile;
+        }
+
+        private Vector3 Position(Cell cell, float height = 0) => Position(cell.X, cell.Y, height);
+        private Vector3 Position(float column, float row, float height = 0) => new Vector3(column * 2, Simulation.Terrain.HeightAt(column, row) + height, row * 2);
+
+        private Quaternion GroundRotation(float column, float row, Vector3 forward)
+        {
+            var cell = new Cell(Mathf.FloorToInt(column + 0.5f), Mathf.FloorToInt(row + 0.5f));
+            Vector3 normal = Simulation.Terrain.Kind(cell) == TerrainKind.Ramp ? new Vector3(-TerrainGrid.LevelHeight / 2, 1, 0).normalized : Vector3.up;
+            return Quaternion.LookRotation(Vector3.ProjectOnPlane(forward, normal).normalized, normal);
+        }
 
         private void Update()
         {
@@ -261,7 +297,8 @@ namespace AstraExpress
         {
             Vector3 direction = position - visual.position;
             direction.y = 0;
-            if (direction.sqrMagnitude > 0.000001f) visual.rotation = Quaternion.Slerp(visual.rotation, Quaternion.LookRotation(direction), Time.deltaTime * 12);
+            if (direction.sqrMagnitude < 0.000001f) direction = Vector3.ProjectOnPlane(visual.forward, Vector3.up);
+            visual.rotation = Quaternion.Slerp(visual.rotation, GroundRotation(position.x / 2, position.z / 2, direction), Time.deltaTime * 12);
             visual.position = position;
         }
 
@@ -309,22 +346,22 @@ namespace AstraExpress
             networkRoot.SetParent(worldRoot);
             foreach (var cell in Simulation.Rails)
             {
-                Box("Track bed", networkRoot, Position(cell, 0.04f), new Vector3(1.15f, 0.15f, 1.15f), foundationMaterial);
-                Box("Rail node", networkRoot, Position(cell, 0.18f), new Vector3(0.6f, 0.13f, 0.6f), railMaterial);
+                var bed = Box("Track bed", networkRoot, Position(cell, 0.04f), new Vector3(1.15f, 0.15f, 1.15f), foundationMaterial);
+                var node = Box("Rail node", networkRoot, Position(cell, 0.18f), new Vector3(0.6f, 0.13f, 0.6f), railMaterial);
+                bed.transform.rotation = node.transform.rotation = GroundRotation(cell.X, cell.Y, Vector3.forward);
                 foreach (var direction in ColonySimulation.Directions)
                 {
                     var adjacent = cell + direction;
-                    if (!Simulation.Rails.Contains(adjacent) || direction.X + direction.Y < 0) continue;
-                    Vector3 midpoint = (Position(cell) + Position(adjacent)) * 0.5f;
+                    if (!Simulation.Rails.Contains(adjacent) || direction.X + direction.Y < 0 || !Simulation.Terrain.CanTraverse(cell, adjacent)) continue;
                     if (direction.X != 0)
                     {
-                        Box("Rail", networkRoot, midpoint + new Vector3(0, 0.17f, -0.3f), new Vector3(2, 0.12f, 0.12f), railMaterial);
-                        Box("Rail", networkRoot, midpoint + new Vector3(0, 0.17f, 0.3f), new Vector3(2, 0.12f, 0.12f), railMaterial);
+                        SurfaceConnection("Rail", cell, adjacent, new Vector3(0, 0.17f, -0.3f), 0.12f, railMaterial);
+                        SurfaceConnection("Rail", cell, adjacent, new Vector3(0, 0.17f, 0.3f), 0.12f, railMaterial);
                     }
                     else
                     {
-                        Box("Rail", networkRoot, midpoint + new Vector3(-0.3f, 0.17f, 0), new Vector3(0.12f, 0.12f, 2), railMaterial);
-                        Box("Rail", networkRoot, midpoint + new Vector3(0.3f, 0.17f, 0), new Vector3(0.12f, 0.12f, 2), railMaterial);
+                        SurfaceConnection("Rail", cell, adjacent, new Vector3(-0.3f, 0.17f, 0), 0.12f, railMaterial);
+                        SurfaceConnection("Rail", cell, adjacent, new Vector3(0.3f, 0.17f, 0), 0.12f, railMaterial);
                     }
                 }
             }
@@ -332,17 +369,34 @@ namespace AstraExpress
             {
                 Material material = Simulation.PoweredCells.Contains(cell) ? powerMaterial : darkPowerMaterial;
                 Vector3 offset = new Vector3(0.66f, 0.10f, 0.66f);
-                Box("Power junction", networkRoot, Position(cell) + offset, new Vector3(0.27f, 0.22f, 0.27f), material);
+                Box("Power junction", networkRoot, Position(cell.X + offset.x / 2, cell.Y + offset.z / 2, offset.y), new Vector3(0.27f, 0.22f, 0.27f), material);
                 foreach (var direction in ColonySimulation.Directions)
                 {
                     var adjacent = cell + direction;
-                    if (!Simulation.Conduits.Contains(adjacent) || direction.X + direction.Y < 0) continue;
-                    Box("Conduit", networkRoot, (Position(cell) + Position(adjacent)) * 0.5f + offset, direction.X != 0 ? new Vector3(2, 0.1f, 0.12f) : new Vector3(0.12f, 0.1f, 2), material);
+                    if (!Simulation.Conduits.Contains(adjacent) || direction.X + direction.Y < 0 || !Simulation.Terrain.CanTraverse(cell, adjacent)) continue;
+                    SurfaceConnection("Conduit", cell, adjacent, offset, 0.1f, material);
                 }
             }
             foreach (var structure in Simulation.Structures)
             {
                 Box("Connection port", networkRoot, Position(structure.Port, 0.04f), new Vector3(1.65f, 0.06f, 1.65f), structure.Connected ? powerMaterial : darkPowerMaterial);
+            }
+        }
+
+        private void SurfaceConnection(string objectName, Cell from, Cell to, Vector3 offset, float thickness, Material material)
+        {
+            var points = new List<Vector3> { Position(from.X + offset.x / 2, from.Y + offset.z / 2, offset.y) };
+            float start = from.X + offset.x / 2;
+            float end = to.X + offset.x / 2;
+            if (from.X != to.X)
+                for (float boundary = Mathf.Floor(start + 0.5f) + 0.5f; boundary < end; boundary++)
+                    points.Add(Position(boundary, from.Y + offset.z / 2, offset.y));
+            points.Add(Position(to.X + offset.x / 2, to.Y + offset.z / 2, offset.y));
+            for (int index = 1; index < points.Count; index++)
+            {
+                Vector3 direction = points[index] - points[index - 1];
+                var segment = Box(objectName, networkRoot, (points[index] + points[index - 1]) * 0.5f, new Vector3(thickness, thickness, direction.magnitude), material);
+                segment.transform.rotation = Quaternion.LookRotation(direction);
             }
         }
 
@@ -392,11 +446,11 @@ namespace AstraExpress
             hover = null;
             if (OverUi(screen)) return;
             var ray = worldCamera.ScreenPointToRay(screen);
-            if (new Plane(Vector3.up, Vector3.zero).Raycast(ray, out float distance))
+            foreach (var hit in Physics.RaycastAll(ray, 200).OrderBy(hit => hit.distance))
             {
-                var point = ray.GetPoint(distance);
-                var cell = new Cell(Mathf.RoundToInt(point.x / 2), Mathf.RoundToInt(point.z / 2));
-                if (ColonySimulation.InBounds(cell)) hover = cell;
+                if (!terrainColliders.TryGetValue(hit.collider, out var cell)) continue;
+                hover = cell;
+                break;
             }
             if (mouse.rightButton.wasPressedThisFrame) { routeStart = null; tool = Tool.Explore; }
             if (!mouse.leftButton.wasPressedThisFrame || !hover.HasValue || Simulation.Paused) return;
@@ -444,15 +498,22 @@ namespace AstraExpress
             {
                 var path = ColonySimulation.Corridor(routeStart.Value, origin, verticalFirst);
                 valid = Simulation.CanLay(path, tool == Tool.Rail, out _, out _);
-                preview.positionCount = path.Count;
-                preview.SetPositions(path.Select(cell => Position(cell, 0.35f)).ToArray());
+                var points = new List<Vector3>();
+                for (int index = 0; index < path.Count; index++)
+                {
+                    if (index > 0) points.Add(Position((path[index - 1].X + path[index].X) * 0.5f, (path[index - 1].Y + path[index].Y) * 0.5f, 0.35f));
+                    points.Add(Position(path[index], 0.35f));
+                }
+                preview.positionCount = points.Count;
+                preview.SetPositions(points.ToArray());
             }
             else
             {
                 Vector3 corner = Position(origin, 0.3f) - new Vector3(0.93f, 0, 0.93f);
                 float extent = size * 2 - 0.14f;
                 preview.positionCount = 5;
-                preview.SetPositions(new[] { corner, corner + Vector3.right * extent, corner + new Vector3(extent, 0, extent), corner + Vector3.forward * extent, corner });
+                var corners = new[] { corner, corner + Vector3.right * extent, corner + new Vector3(extent, 0, extent), corner + Vector3.forward * extent, corner };
+                preview.SetPositions(corners.Select(point => Position(point.x / 2, point.z / 2, 0.3f)).ToArray());
             }
             previewMaterial.SetColor("_BaseColor", valid ? cyan : new Color(1, 0.35f, 0.38f));
         }
@@ -631,7 +692,8 @@ namespace AstraExpress
             {
                 Stat(left, ref row, "POSITION", Simulation.RoverCell.ToString());
                 Stat(left, ref row, "MOVEMENT", Simulation.RoverMoving ? "EXPLORING" : "AWAITING ORDERS");
-                Stat(left, ref row, "ENERGY", "2 power / tile travelled");
+                Stat(left, ref row, "ENERGY", "2 power / surface tile");
+                Stat(left, ref row, "ELEVATION", Simulation.Terrain.Kind(Simulation.RoverCell) == TerrainKind.Ramp ? "Climbing / descending ramp" : Simulation.Terrain.Elevation(Simulation.RoverCell) == 1 ? "Upper plateau" : "Colony lowlands");
                 GUI.Label(new Rect(left, row + 16, width, 100), "Click ground to explore. Previously revealed terrain stays visible. At low power, pause mines and let solar recharge.", bodyStyle);
             }
             if (Button(new Rect(left, panel.yMax - 52, 112, 34), "COLONY  [C]")) CenterColony();
@@ -681,6 +743,8 @@ namespace AstraExpress
                 WorldLabel(Position(deposit.Origin) + new Vector3(deposit.Size - 1, 1.3f, deposit.Size - 1), $"{deposit.Resource.ToString().ToUpper()}  {deposit.Size}x{deposit.Size} / {deposit.Rate:0.##}/s", deposit.Resource == ResourceKind.Fluxite ? cyan : gold);
             }
             WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
+            foreach (var cell in ground.Keys)
+                if (Simulation.Terrain.Kind(cell) == TerrainKind.Ramp && Simulation.IsRevealed(cell)) WorldLabel(Position(cell, 0.35f), "RAMP PASS", cyan);
             if (selected != null) WorldLabel(Position(selected.Port, 0.2f), "CONNECT HERE", cyan);
         }
 
