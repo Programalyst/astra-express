@@ -118,6 +118,7 @@ namespace AstraExpress
             if (parts.Length != 2 || !int.TryParse(parts[0], out int x) || !int.TryParse(parts[1], out int y)) return;
             var cell = new Cell(x, y);
             if (!ColonySimulation.InBounds(cell)) return;
+            StopFollowingRover();
             cameraTarget = Position(cell);
             PositionCamera();
             coachTimer = 1;

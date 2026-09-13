@@ -346,6 +346,7 @@ MonoBehaviour:
   TerrainModel: {fileID: 919132149155446097, guid: 712a0e0e78c014d11a972b5540411a2a, type: 3}
   RampModel: {fileID: 919132149155446097, guid: 2c46d3c42f9b1425db1beeccae970a0d, type: 3}
   HillsideModel: {fileID: 919132149155446097, guid: d5b9d8a10547f48cc9146445068370a6, type: 3}
+  HillsideCornerModel: {fileID: 919132149155446097, guid: 99b4a9f96d48846a18b75668952caa86, type: 3}
   SurfaceTemplate: {fileID: 2100000, guid: b816bb5a564bc45bdb78749964b0cd16, type: 2}
   diagnostics: 
 --- !u!4 &1664825216

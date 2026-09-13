@@ -4,7 +4,7 @@
 
 This document records the first ore checkpoint. The subsequent [fuel-powered frontier milestone](FUEL_MILESTONE.md) adds Fluxite plants, a four-train fleet, new controls, and its own validation evidence; historical limitations below describe the first checkpoint only.
 
-The later [two-elevation terrain milestone](TERRAIN_MILESTONE.md) adds the eastern plateau, ramp passes, height-aware A* routing, and slope-aware infrastructure without NavMesh, bridges, or tunnels.
+The later [two-elevation terrain milestone](TERRAIN_MILESTONE.md) adds the eastern ore plateau and a separate northern plateau beneath the 2x2 Fluxite patch, ramp passes, height-aware A* routing, and slope-aware infrastructure without NavMesh, bridges, or tunnels.
 
 ## Result and timing
 
@@ -29,6 +29,8 @@ To rebuild, exit Play Mode, keep the Web platform active, save intended scene ch
 For automation, the Editor helper accepts `setup`, `switchweb`, or `buildweb` in `Temp/AstraExpress/request.txt`, consumed by an Editor update. After `switchweb`, wait for script compilation and reload before requesting `buildweb`. Status is written to `Temp/AstraExpress/status.json`. The semantic bridge's `refresh_assets` imports external script changes; it is not itself a build command.
 
 ## Controls and first route
+
+The custom orthographic camera views the ground at a 35° pitch; it does not use Cinemachine. Camera follow is enabled by default and eases after the rover, including changes in elevation. A successful rover move order resumes follow. WASD/arrow-key panning, middle-mouse dragging, Colony/C, selecting a building, construction tools, and Fleet stop follow so the camera does not fight inspection or placement. Rover/V centers and resumes follow; its highlighted button indicates follow is active. Zoom remains available while following.
 
 | Action | Control |
 | --- | --- |

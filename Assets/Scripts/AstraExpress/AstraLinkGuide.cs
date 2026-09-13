@@ -185,6 +185,7 @@ namespace AstraExpress
             var building = Simulation.Structures.FirstOrDefault(b => b.Origin.Equals(new Cell(x, y)));
             if (building == null || building.Kind == StructureKind.Colony) return;
             if (parts[0] == "Rail" && building.Kind != StructureKind.Extractor && building.Kind != StructureKind.PowerPlant) return;
+            StopFollowingRover();
             selected = building;
             Tool requestedTool = parts[0] == "Rail" ? Tool.Rail : Tool.Conduit;
             if (tool != requestedTool) SetTool(requestedTool);

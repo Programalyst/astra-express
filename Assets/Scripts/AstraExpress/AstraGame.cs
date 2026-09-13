@@ -18,6 +18,7 @@ namespace AstraExpress
         public GameObject TerrainModel;
         public GameObject RampModel;
         public GameObject HillsideModel;
+        public GameObject HillsideCornerModel;
         public Material SurfaceTemplate;
         [SerializeField] private string diagnostics;
         public ColonySimulation Simulation { get; private set; }
@@ -59,6 +60,8 @@ namespace AstraExpress
         private float diagnosticTimer;
         private int previousDeliveries;
         private Vector3 cameraTarget;
+        private Vector3 cameraVelocity;
+        private bool followRover = true;
         private GUIStyle titleStyle;
         private GUIStyle headingStyle;
         private GUIStyle bodyStyle;
@@ -106,7 +109,7 @@ namespace AstraExpress
             cameraTarget = new Vector3(15, 0, 16);
             worldCamera.orthographic = true;
             worldCamera.orthographicSize = 16;
-            worldCamera.transform.rotation = Quaternion.Euler(55, 20, 0);
+            worldCamera.transform.rotation = Quaternion.Euler(35, 20, 0);
             PositionCamera();
             fogMaterial = MakeMaterial(new Color(0.10f, 0.13f, 0.21f));
             groundMaterial = MakeMaterial(new Color(0.91f, 0.52f, 0.39f));
@@ -174,6 +177,7 @@ namespace AstraExpress
             preview.shadowCastingMode = ShadowCastingMode.Off;
             InitializeFogVisuals();
             SyncWorld();
+            CenterRover();
         }
 
         private GameObject Box(string objectName, Transform parent, Vector3 position, Vector3 scale, Material material)
@@ -235,7 +239,7 @@ namespace AstraExpress
         private GameObject CreateTerrain(Cell cell)
         {
             TerrainKind kind = Simulation.Terrain.Kind(cell);
-            var prefab = kind == TerrainKind.Ramp ? RampModel : kind == TerrainKind.Hillside ? HillsideModel : TerrainModel;
+            var prefab = Simulation.Terrain.IsCorner(cell) ? HillsideCornerModel : kind == TerrainKind.Ramp ? RampModel : kind == TerrainKind.Hillside ? HillsideModel : TerrainModel;
             float baseHeight = Simulation.Terrain.Elevation(cell) * TerrainGrid.LevelHeight;
             var tile = Model(prefab, kind + " terrain " + cell, worldRoot, new Vector3(cell.X * 2, baseHeight - 0.02f, cell.Y * 2), 2, TerrainGrid.LevelHeight);
             if (kind != TerrainKind.Flat)
@@ -244,7 +248,9 @@ namespace AstraExpress
                 var bounds = renderers[0].bounds;
                 foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
                 tile.transform.localScale = new Vector3(1, TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), 1);
-                tile.transform.localRotation = Quaternion.Euler(0, -90, 0);
+                Cell uphill = Simulation.Terrain.Uphill(cell);
+                float yaw = Simulation.Terrain.IsCorner(cell) ? 90 : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
+                tile.transform.localRotation = Quaternion.Euler(0, yaw, 0);
             }
             else
             {
@@ -266,7 +272,9 @@ namespace AstraExpress
         private Quaternion GroundRotation(float column, float row, Vector3 forward)
         {
             var cell = new Cell(Mathf.FloorToInt(column + 0.5f), Mathf.FloorToInt(row + 0.5f));
-            Vector3 normal = Simulation.Terrain.Kind(cell) == TerrainKind.Ramp ? new Vector3(-TerrainGrid.LevelHeight / 2, 1, 0).normalized : Vector3.up;
+            Cell uphill = Simulation.Terrain.Uphill(cell);
+            float rise = TerrainGrid.LevelHeight / TerrainGrid.CellSize;
+            Vector3 normal = Simulation.Terrain.Kind(cell) == TerrainKind.Ramp ? new Vector3(-uphill.X * rise, 1, -uphill.Y * rise).normalized : Vector3.up;
             return Quaternion.LookRotation(Vector3.ProjectOnPlane(forward, normal).normalized, normal);
         }
 
@@ -299,6 +307,13 @@ namespace AstraExpress
                 Debug.Log($"ASTRA_DELIVERY credits={Simulation.Credits}; sold={Simulation.Sold}; trips={Simulation.Deliveries}; ore={Simulation.AccountedOre}/{Simulation.Produced}; fuel={Simulation.AccountedFuel}/{Simulation.FuelProduced}");
             }
             PublishCoach();
+        }
+
+        private void LateUpdate()
+        {
+            if (Simulation == null || !followRover) return;
+            cameraTarget = Vector3.SmoothDamp(cameraTarget, Position(Simulation.RoverX, Simulation.RoverY), ref cameraVelocity, 0.22f, Mathf.Infinity, Time.unscaledDeltaTime);
+            PositionCamera();
         }
 
         private void MoveVisual(Transform visual, Vector3 position)
@@ -425,12 +440,14 @@ namespace AstraExpress
                 if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) pan.x++;
                 if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) pan.z++;
                 if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) pan.z--;
+                if (pan.sqrMagnitude > 0) StopFollowingRover();
                 cameraTarget += pan * (Time.unscaledDeltaTime * worldCamera.orthographicSize);
             }
             Vector2 screen = mouse.position.ReadValue();
             if (mouse.middleButton.isPressed)
             {
                 Vector2 delta = mouse.delta.ReadValue();
+                if (delta.sqrMagnitude > 0) StopFollowingRover();
                 Vector3 right = worldCamera.transform.right;
                 Vector3 forward = Vector3.ProjectOnPlane(worldCamera.transform.up, Vector3.up).normalized;
                 cameraTarget -= (right * delta.x + forward * delta.y) * (worldCamera.orthographicSize * 2 / Screen.height);
@@ -460,7 +477,11 @@ namespace AstraExpress
             {
                 selected = Simulation.IsRevealed(target) ? Simulation.StructureAt(target) : null;
                 trainSelected = false;
-                if (selected == null) Simulation.OrderRover(target);
+                if (selected == null)
+                {
+                    if (Simulation.OrderRover(target)) followRover = true;
+                }
+                else StopFollowingRover();
             }
             else if (BuildingTool)
             {
@@ -487,10 +508,16 @@ namespace AstraExpress
             }
         }
 
-        private void SetTool(Tool next) { if (next == Tool.Conduit || next == Tool.Rail) linkSuppressed = false; tool = next; routeStart = null; trainSelected = false; }
+        private void SetTool(Tool next)
+        {
+            if (next == Tool.Conduit || next == Tool.Rail) linkSuppressed = false;
+            tool = next; routeStart = null; trainSelected = false;
+            if (next != Tool.Explore) StopFollowingRover();
+        }
+        private void StopFollowingRover() { followRover = false; cameraVelocity = Vector3.zero; }
         private void PositionCamera() => worldCamera.transform.position = cameraTarget - worldCamera.transform.forward * 48;
-        private void CenterColony() { cameraTarget = Position(7, 8); PositionCamera(); }
-        private void CenterRover() { cameraTarget = Position(Simulation.RoverX, Simulation.RoverY); PositionCamera(); }
+        private void CenterColony() { StopFollowingRover(); cameraTarget = Position(7, 8); PositionCamera(); }
+        private void CenterRover() { followRover = true; cameraVelocity = Vector3.zero; cameraTarget = Position(Simulation.RoverX, Simulation.RoverY); PositionCamera(); }
 
         private void UpdatePreview()
         {
@@ -703,10 +730,10 @@ namespace AstraExpress
                 GUI.Label(new Rect(left, row + 16, width, 100), "Click ground to explore. Previously revealed terrain stays visible. At low power, pause mines and let solar recharge.", bodyStyle);
             }
             if (Button(new Rect(left, panel.yMax - 52, 112, 34), "Colony [C]")) CenterColony();
-            if (Button(new Rect(left + 122, panel.yMax - 52, width - 122, 34), "Rover [V]")) CenterRover();
+            if (Button(new Rect(left + 122, panel.yMax - 52, width - 122, 34), "Rover [V]", followRover)) CenterRover();
         }
 
-        private void SetToolForFleet() { tool = Tool.Explore; routeStart = null; HideLinkGuide(); }
+        private void SetToolForFleet() { tool = Tool.Explore; routeStart = null; HideLinkGuide(); StopFollowingRover(); }
 
         private void Stat(float left, ref float row, string name, string value)
         {

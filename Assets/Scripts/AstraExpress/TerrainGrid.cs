@@ -9,21 +9,46 @@ namespace AstraExpress
         public const float LevelHeight = 1.5f;
         public const float CellSize = 2;
         public const int HillsideColumn = 17;
+        public const int NorthernHillsideColumn = 9;
+        public const int NorthernHillsideRow = 15;
+        public const int NorthernRampColumn = 4;
 
-        public TerrainKind Kind(Cell cell) => cell.X != HillsideColumn ? TerrainKind.Flat : cell.Y == 5 || cell.Y == 15 ? TerrainKind.Ramp : TerrainKind.Hillside;
-        public int Elevation(Cell cell) => cell.X > HillsideColumn ? 1 : 0;
+        public TerrainKind Kind(Cell cell)
+        {
+            if (cell.X == HillsideColumn) return cell.Y == 5 || cell.Y == 15 ? TerrainKind.Ramp : TerrainKind.Hillside;
+            if (cell.X <= NorthernHillsideColumn && cell.Y == NorthernHillsideRow)
+                return cell.X == NorthernRampColumn ? TerrainKind.Ramp : TerrainKind.Hillside;
+            if (cell.X == NorthernHillsideColumn && cell.Y > NorthernHillsideRow) return TerrainKind.Hillside;
+            return TerrainKind.Flat;
+        }
+
+        public int Elevation(Cell cell) => cell.X > HillsideColumn || cell.X < NorthernHillsideColumn && cell.Y > NorthernHillsideRow ? 1 : 0;
         public bool Walkable(Cell cell) => ColonySimulation.InBounds(cell) && Kind(cell) != TerrainKind.Hillside;
+        public bool IsCorner(Cell cell) => cell.X == NorthernHillsideColumn && cell.Y == NorthernHillsideRow;
+
+        public Cell Uphill(Cell cell)
+        {
+            if (cell.X == HillsideColumn) return new Cell(1, 0);
+            if (cell.Y == NorthernHillsideRow) return new Cell(0, 1);
+            return new Cell(-1, 0);
+        }
 
         public float HeightAt(float column, float row)
         {
-            return LevelHeight * Math.Max(0, Math.Min(1, column - HillsideColumn + 0.5f));
+            float easternHeight = Math.Max(0, Math.Min(1, column - HillsideColumn + 0.5f));
+            float northernHeight = Math.Max(0, Math.Min(1, Math.Min(NorthernHillsideColumn + 0.5f - column, row - NorthernHillsideRow + 0.5f)));
+            return LevelHeight * Math.Max(easternHeight, northernHeight);
         }
 
         public bool CanTraverse(Cell from, Cell to)
         {
             if (!Walkable(from) || !Walkable(to)) return false;
             if (Math.Abs(from.X - to.X) + Math.Abs(from.Y - to.Y) != 1) return false;
-            if ((Kind(from) == TerrainKind.Ramp || Kind(to) == TerrainKind.Ramp) && from.Y != to.Y) return false;
+            if (Kind(from) == TerrainKind.Ramp || Kind(to) == TerrainKind.Ramp)
+            {
+                Cell uphill = Uphill(Kind(from) == TerrainKind.Ramp ? from : to);
+                if ((to.X - from.X) * uphill.Y != (to.Y - from.Y) * uphill.X) return false;
+            }
             if (Kind(from) == TerrainKind.Flat && Kind(to) == TerrainKind.Flat) return Elevation(from) == Elevation(to);
             return true;
         }
