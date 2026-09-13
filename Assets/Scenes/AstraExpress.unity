@@ -462,9 +462,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AstraExpress.AstraGame
   RoverModel: {fileID: 1628935024068964, guid: 9cfed5dcd383d0341bf6753bd8128cd9, type: 3}
-  ColonyModel: {fileID: 919132149155446097, guid: 9fbddf80ddd794c4b8c3d33a49f632db, type: 3}
+  ColonyModel: {fileID: 1921197407026916, guid: d81764106729b864190b07916583157e, type: 3}
   SolarModel: {fileID: 919132149155446097, guid: f44dc91195ee348e7b46380fe9a7e0a1, type: 3}
-  ExtractorModel: {fileID: 919132149155446097, guid: 44360eba77a844f42a949d90c95c29dc, type: 3}
+  ExtractorModel: {fileID: 1523932454943420619, guid: 880742a3628f74e1aa8dc503bd925ac1, type: 3}
+  PowerPlantModel: {fileID: 919132149155446097, guid: 44360eba77a844f42a949d90c95c29dc, type: 3}
   OreModel: {fileID: 919132149155446097, guid: a9d03d5ef852645ce88c727735633cc0, type: 3}
   FluxiteModel: {fileID: 5116399067178782739, guid: ce96462a755d44dffaf9ba15c5fb4009, type: 3}
   TrainModel: {fileID: 919132149155446097, guid: dfccdff82d2a14b0d8d7e210bfd76889, type: 3}

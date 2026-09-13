@@ -13,6 +13,7 @@ namespace AstraExpress
         public GameObject ColonyModel;
         public GameObject SolarModel;
         public GameObject ExtractorModel;
+        public GameObject PowerPlantModel;
         public GameObject OreModel;
         public GameObject FluxiteModel;
         public GameObject TrainModel;
@@ -36,6 +37,7 @@ namespace AstraExpress
         private readonly Dictionary<Collider, Cell> terrainColliders = new Dictionary<Collider, Cell>();
         private readonly Dictionary<Cell, GameObject> ore = new Dictionary<Cell, GameObject>();
         private readonly Dictionary<Structure, Transform> buildings = new Dictionary<Structure, Transform>();
+        private readonly Dictionary<Structure, Animator[]> extractorAnimators = new Dictionary<Structure, Animator[]>();
         private readonly Dictionary<Material, Material> converted = new Dictionary<Material, Material>();
         private readonly List<Material> ownedMaterials = new List<Material>();
         private Transform networkRoot;
@@ -116,6 +118,7 @@ namespace AstraExpress
 
         private void Start()
         {
+            Application.runInBackground = true;
             powerFlowProperties = new MaterialPropertyBlock();
             Application.targetFrameRate = 60;
             worldCamera = Camera.main;
@@ -160,6 +163,7 @@ namespace AstraExpress
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             worldRoot = new GameObject("Colony world").transform;
             ground.Clear(); terrainColliders.Clear(); ore.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
+            extractorAnimators.Clear();
             selected = null; trainSelected = false; routeStart = null; tool = Tool.Explore;
             fuelDestination = null; selectedTrainIndex = 0; confirmRestart = false;
             Simulation = new ColonySimulation();
@@ -299,6 +303,7 @@ namespace AstraExpress
             HandleInput();
             Simulation.Step(Time.deltaTime);
             SyncWorld();
+            UpdateExtractorAnimations();
             UpdateFogVisuals();
             UpdatePowerVisuals();
             UpdateLinkGuide();
@@ -348,7 +353,7 @@ namespace AstraExpress
                 revealRevision = Simulation.RevealRevision;
                 groundSurface.SetRevealed(Simulation);
                 foreach (var pair in ground) pair.Value.SetRevealed(Simulation.IsRevealed(pair.Key));
-                foreach (var pair in ore) pair.Value.SetActive(Simulation.IsRevealed(pair.Key) && Simulation.DepositAt(pair.Key).Extractor == null);
+                foreach (var pair in ore) pair.Value.SetActive(Simulation.IsRevealed(pair.Key));
                 SyncFogVisuals();
             }
             if (Simulation.Revision == revision) return;
@@ -367,13 +372,16 @@ namespace AstraExpress
                 var root = new GameObject(structure.Kind + " " + structure.Origin).transform;
                 root.SetParent(worldRoot);
                 root.position = center;
-                Box("Foundation", root, new Vector3(0, 0.04f, 0), new Vector3(structure.Size * 1.93f, 0.2f, structure.Size * 1.93f), foundationMaterial);
-                GameObject prefab = structure.Kind == StructureKind.Colony ? ColonyModel : structure.Kind == StructureKind.Solar ? SolarModel : ExtractorModel;
-                Model(prefab, structure.Kind.ToString(), root, new Vector3(0, 0.15f, 0), structure.Size * 1.8f, structure.Kind == StructureKind.Colony ? 2.6f : 1.5f);
-                if (structure.Kind == StructureKind.Extractor)
+                bool extractor = structure.Kind == StructureKind.Extractor;
+                if (!extractor)
+                    Box("Foundation", root, new Vector3(0, 0.04f, 0), new Vector3(structure.Size * 1.93f, 0.2f, structure.Size * 1.93f), foundationMaterial);
+                GameObject prefab = structure.Kind == StructureKind.Colony ? ColonyModel : structure.Kind == StructureKind.Solar ? SolarModel : structure.Kind == StructureKind.PowerPlant ? PowerPlantModel : ExtractorModel;
+                var model = Model(prefab, structure.Kind.ToString(), root, new Vector3(0, extractor ? 0 : 0.15f, 0), structure.Size * 1.8f, extractor ? structure.Size * 2.2f : structure.Kind == StructureKind.Colony ? 2.6f : 1.5f, extractor || structure.Kind == StructureKind.Colony);
+                if (extractor)
                 {
-                    Box("Processing tower", root, new Vector3(0.3f, 0.9f, 0.3f), new Vector3(0.35f, 1.5f, 0.35f), structure.Deposit.Resource == ResourceKind.Fluxite ? fuelMaterial : orangeMaterial);
-                    foreach (var cell in ColonySimulation.Footprint(structure.Origin, structure.Size)) if (ore.TryGetValue(cell, out var cluster)) cluster.SetActive(false);
+                    var animators = model.GetComponentsInChildren<Animator>(true);
+                    foreach (var animator in animators) animator.speed = 0;
+                    extractorAnimators[structure] = animators;
                 }
                 if (structure.Kind == StructureKind.PowerPlant)
                 {
@@ -407,6 +415,17 @@ namespace AstraExpress
                 }
             }
             DrawPowerNetwork();
+        }
+
+        private void UpdateExtractorAnimations()
+        {
+            foreach (var pair in extractorAnimators)
+            {
+                var structure = pair.Key;
+                float speed = !Simulation.Paused && structure.Connected && !structure.Paused && structure.Stock < structure.Storage
+                    ? Mathf.Clamp01(structure.SuppliedFraction) : 0;
+                foreach (var animator in pair.Value) animator.speed = speed;
+            }
         }
 
         private void SurfaceConnection(string objectName, Cell from, Cell to, Vector3 offset, float thickness, Material material)
@@ -576,11 +595,6 @@ namespace AstraExpress
                 preview.SetPositions(corners.Select(point => Position(point.x / 2, point.z / 2, 0.3f)).ToArray());
             }
             previewMaterial.SetColor("_BaseColor", valid ? (tool == Tool.Rail ? gold : cyan) : new Color(1, 0.35f, 0.38f));
-        }
-
-        private void OnApplicationFocus(bool focused)
-        {
-            if (!focused && Simulation != null) Simulation.Paused = true;
         }
 
         private void OnGUI()
@@ -804,10 +818,13 @@ namespace AstraExpress
             foreach (var deposit in Simulation.Deposits)
             {
                 if (!Simulation.FullyRevealed(deposit) || deposit.Extractor != null) continue;
-                WorldLabel(Position(deposit.Origin) + new Vector3(deposit.Size - 1, 1.3f, deposit.Size - 1), $"{deposit.Resource.ToString().ToUpper()}  {deposit.Size}x{deposit.Size} / {deposit.Rate:0.##}/s", deposit.Resource == ResourceKind.Fluxite ? cyan : gold);
+                var center = Position(deposit.Origin) + new Vector3(deposit.Size - 1, 0, deposit.Size - 1);
+                var cameraUp = worldCamera.transform.up;
+                float halfWidth = deposit.Size * TerrainGrid.CellSize * 0.5f;
+                float modelHeight = deposit.Resource == ResourceKind.Fluxite && FluxiteModel != null ? 1.4f : 0.8f;
+                float topOffset = halfWidth * (Mathf.Abs(cameraUp.x) + Mathf.Abs(cameraUp.z)) + modelHeight * Mathf.Abs(cameraUp.y);
+                WorldLabel(center + cameraUp * topOffset, $"{deposit.Resource.ToString().ToUpper()}  {deposit.Size}x{deposit.Size} / {deposit.Rate:0.##}/s", deposit.Resource == ResourceKind.Fluxite ? cyan : gold, -32);
             }
-            foreach (var cell in ground.Keys)
-                if (Simulation.Terrain.Kind(cell) == TerrainKind.Ramp && Simulation.IsRevealed(cell)) WorldLabel(Position(cell, 0.35f), "RAMP PASS", cyan);
             if (!NetworkTool && (!LinkGuideActive || linkStops.Count < 2)) WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
             if (!NetworkTool && selected != null && selected != Simulation.Colony && (!LinkGuideActive || linkStops.Count < 2))
                 WorldLabel(Position(selected.Port, 0.2f),
@@ -815,11 +832,11 @@ namespace AstraExpress
                     selected.Connected ? cyan : gold);
         }
 
-        private void WorldLabel(Vector3 position, string caption, Color accent)
+        private void WorldLabel(Vector3 position, string caption, Color accent, float verticalOffset = 8)
         {
             Vector3 screen = worldCamera.WorldToScreenPoint(position);
             if (screen.z < 0) return;
-            var rectangle = new Rect(screen.x / UiScale - 85, (Screen.height - screen.y) / UiScale + 8, 170, 24);
+            var rectangle = new Rect(screen.x / UiScale - 85, (Screen.height - screen.y) / UiScale + verticalOffset, 170, 24);
             if (rectangle.y < 74 || rectangle.yMax > UiHeight - 130 || ContextPanelOverlaps(rectangle)) return;
             Fill(rectangle, new Color(0.04f, 0.065f, 0.10f, 0.9f));
             Fill(new Rect(rectangle.x, rectangle.y, 3, rectangle.height), accent);

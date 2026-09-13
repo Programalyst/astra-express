@@ -287,7 +287,7 @@ Record actual Astra contributions as work happens. A suggested video sequence is
 - Upgrades change future production or capacity without creating cargo or duplicate payments.
 - Invalid building actions charge nothing; refunds and route changes preserve resources.
 - A new player completes discovery through first payment without editor assistance.
-- The hosted game handles pause, tab changes, audio, resizing, and a full session in the nominated browsers.
+- The hosted game handles pause, tab changes, audio, resizing, and a full session in the nominated browsers. Losing focus does not pause the colony; background running is enabled, while Space and the Pause/Resume buttons remain manual controls. This does not add offline progress or elapsed-time catch-up. AI takeover still stops when its browser tab is hidden.
 - Saves, if included, preserve exploration and transactions without duplication.
 
 The shared battery, square grid, infinite deposits with three sizes and increasing yield and distance, fuel-powered generation direction, supplied Kenney packs, selected solar model, and division of responsibilities are confirmed. Still to decide are matching extractor footprints, remote rover charging, persistent fog, shortage and refund policies, tier and fuel-chain balance, and the submission host. Proposed defaults make these reviewable without treating them as already approved.

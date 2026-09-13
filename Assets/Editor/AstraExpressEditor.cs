@@ -110,9 +110,10 @@ public static class AstraExpressEditor
         var game = new GameObject("Astra Express").AddComponent<AstraGame>();
         game.SurfaceTemplate = surface;
         game.RoverModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/Vehicles/SM_Veh_Apc_01.prefab");
-        game.ColonyModel = LoadModel(SpaceRoot + "hangar_roundA.fbx");
+        game.ColonyModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Buildings/SM_Bld_Pod_Research_05.prefab");
         game.SolarModel = LoadModel("Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx");
-        game.ExtractorModel = LoadModel(SpaceRoot + "machine_generatorLarge.fbx");
+        game.ExtractorModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/SM_Prop_Drill_03.prefab");
+        game.PowerPlantModel = LoadModel(SpaceRoot + "machine_generatorLarge.fbx");
         game.OreModel = LoadModel(SpaceRoot + "rock_largeA.fbx");
         game.FluxiteModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Single Crystal.prefab");
         game.TrainModel = LoadModel(SpaceRoot + "monorail_trainFront.fbx");
