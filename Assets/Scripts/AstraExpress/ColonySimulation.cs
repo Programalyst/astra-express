@@ -84,6 +84,7 @@ namespace AstraExpress
         public const float FuelEnergy = 40;
         public static readonly Cell[] Directions = { new Cell(1, 0), new Cell(-1, 0), new Cell(0, 1), new Cell(0, -1) };
         public readonly bool[,] Revealed = new bool[Width, Height];
+        public readonly TerrainGrid Terrain = new TerrainGrid();
         public readonly List<Deposit> Deposits = new List<Deposit>();
         public readonly List<Structure> Structures = new List<Structure>();
         public readonly HashSet<Cell> Conduits = new HashSet<Cell>();
@@ -166,12 +167,12 @@ namespace AstraExpress
 
         public bool OrderRover(Cell destination)
         {
-            if (!InBounds(destination) || StructureAt(destination) != null) return Fail("The rover needs clear ground. Click beside the building.");
+            if (!Terrain.Walkable(destination) || StructureAt(destination) != null) return Fail("The rover needs clear ground. Use the marked ramps to reach the plateau; hillsides are impassable.");
             var route = FindPath(RoverCell, destination, cell => StructureAt(cell) == null);
             if (route == null) return Fail("No walkable route to that destination.");
             roverRoute = route;
             roverWaypoint = 0;
-            Message = "Rover exploring. Moving costs 2 power per tile; solar recharges the shared battery.";
+            Message = "Rover exploring. Movement costs 2 power per tile-equivalent of surface distance; ramps take slightly more.";
             return true;
         }
 
@@ -196,6 +197,8 @@ namespace AstraExpress
             foreach (var cell in Footprint(origin, size))
             {
                 if (!IsRevealed(cell)) { reason = "The complete footprint must be explored."; return false; }
+                if (Terrain.Kind(cell) != TerrainKind.Flat || Terrain.Elevation(cell) != Terrain.Elevation(origin))
+                { reason = "Buildings need a level footprint. Keep ramps and hillsides clear."; return false; }
                 if (StructureAt(cell) != null || Rails.Contains(cell) || Conduits.Contains(cell) || cell.Equals(RoverCell) || TrainOccupies(cell))
                 { reason = "Footprint occupied. Leave room for vehicles and infrastructure."; return false; }
                 if (kind != StructureKind.Extractor && DepositAt(cell) != null) { reason = "Keep resource deposits free for extractors."; return false; }
@@ -203,6 +206,8 @@ namespace AstraExpress
             }
             var port = new Cell(origin.X, origin.Y - 1);
             if (!IsRevealed(port) || StructureAt(port) != null) { reason = "Explore and clear the port immediately south of the building."; return false; }
+            if (Terrain.Kind(port) != TerrainKind.Flat || Terrain.Elevation(port) != Terrain.Elevation(origin))
+            { reason = "The south port must be on level ground at the building's elevation."; return false; }
             if (Credits < cost) { reason = $"Need {cost} credits. Deliver ore to earn more."; return false; }
             return true;
         }
@@ -251,8 +256,9 @@ namespace AstraExpress
             {
                 var cell = path[index];
                 if (!IsRevealed(cell) || StructureAt(cell) != null) { reason = "Route must stay on explored, unoccupied ground."; return false; }
-                if (index > 0 && Math.Abs(cell.X - path[index - 1].X) + Math.Abs(cell.Y - path[index - 1].Y) > 1)
-                { reason = "Route tiles must connect edge to edge."; return false; }
+                if (!Terrain.Walkable(cell)) { reason = "Hillsides are impassable. Route through a ramp pass."; return false; }
+                if (index > 0 && !cell.Equals(path[index - 1]) && !Terrain.CanTraverse(path[index - 1], cell))
+                { reason = "Use a ramp to change elevation. Routes must run straight up or down ramps; R changes the route bend."; return false; }
                 if (unique.Add(cell) && !network.Contains(cell)) cost += rail ? 3 : 2;
             }
             if (cost > Credits) { reason = $"Route costs {cost} credits; only {Credits} available."; return false; }
@@ -283,7 +289,7 @@ namespace AstraExpress
                 foreach (var direction in Directions)
                 {
                     var next = current + direction;
-                    if (Conduits.Contains(next) && PoweredCells.Add(next)) frontier.Enqueue(next);
+                    if (Conduits.Contains(next) && Terrain.CanTraverse(current, next) && PoweredCells.Add(next)) frontier.Enqueue(next);
                 }
             }
             foreach (var structure in Structures) structure.Connected = structure.Starter || PoweredCells.Contains(structure.Port);
@@ -409,13 +415,15 @@ namespace AstraExpress
                 float offsetY = target.Y - RoverY;
                 float distance = (float)Math.Sqrt(offsetX * offsetX + offsetY * offsetY);
                 if (distance < 0.0001f) { roverWaypoint++; continue; }
-                float travel = Math.Min(distanceBudget, distance);
-                RoverX += offsetX / distance * travel;
-                RoverY += offsetY / distance * travel;
-                Battery = Math.Max(0, Battery - travel * 2);
-                distanceBudget -= travel;
+                float column = RoverX;
+                float row = RoverY;
+                float spent = Terrain.MoveTowards(ref column, ref row, target, distanceBudget);
+                RoverX = column;
+                RoverY = row;
+                Battery = Math.Max(0, Battery - spent * 2);
+                distanceBudget -= spent;
                 Reveal(RoverX, RoverY, 3);
-                if (travel >= distance - 0.0001f) roverWaypoint++;
+                if (Math.Abs(RoverX - target.X) + Math.Abs(RoverY - target.Y) < 0.0001f) roverWaypoint++;
             }
         }
 
@@ -476,11 +484,8 @@ namespace AstraExpress
                     float offsetY = target.Y - train.Y;
                     float distance = (float)Math.Sqrt(offsetX * offsetX + offsetY * offsetY);
                     if (distance < 0.0001f) { train.Waypoint++; continue; }
-                    float travel = Math.Min(budget, distance);
-                    train.X += offsetX / distance * travel;
-                    train.Y += offsetY / distance * travel;
-                    budget -= travel;
-                    if (travel >= distance - 0.0001f) train.Waypoint++;
+                    budget -= Terrain.MoveTowards(ref train.X, ref train.Y, target, budget);
+                    if (Math.Abs(train.X - target.X) + Math.Abs(train.Y - target.Y) < 0.0001f) train.Waypoint++;
                 }
                 if (train.Waypoint >= train.Leg.Count)
                 {
@@ -538,13 +543,21 @@ namespace AstraExpress
 
         public List<Cell> FindPath(Cell start, Cell end, Func<Cell, bool> allowed)
         {
-            if (!InBounds(start) || !InBounds(end) || !allowed(end)) return null;
-            var frontier = new Queue<Cell>();
+            if (!Terrain.Walkable(start) || !Terrain.Walkable(end) || !allowed(end)) return null;
+            var frontier = new List<Cell> { start };
             var previous = new Dictionary<Cell, Cell> { [start] = start };
-            frontier.Enqueue(start);
+            var costs = new Dictionary<Cell, float> { [start] = 0 };
             while (frontier.Count > 0)
             {
-                var current = frontier.Dequeue();
+                int best = 0;
+                for (int index = 1; index < frontier.Count; index++)
+                {
+                    var candidate = frontier[index];
+                    var incumbent = frontier[best];
+                    if (costs[candidate] + Math.Abs(candidate.X - end.X) + Math.Abs(candidate.Y - end.Y) < costs[incumbent] + Math.Abs(incumbent.X - end.X) + Math.Abs(incumbent.Y - end.Y)) best = index;
+                }
+                var current = frontier[best];
+                frontier.RemoveAt(best);
                 if (current.Equals(end))
                 {
                     var result = new List<Cell> { end };
@@ -555,9 +568,12 @@ namespace AstraExpress
                 foreach (var direction in Directions)
                 {
                     var next = current + direction;
-                    if (!InBounds(next) || previous.ContainsKey(next) || !allowed(next)) continue;
+                    if (!Terrain.CanTraverse(current, next) || !allowed(next)) continue;
+                    float cost = costs[current] + Terrain.EdgeCost(current, next);
+                    if (costs.TryGetValue(next, out float previousCost) && cost >= previousCost) continue;
+                    costs[next] = cost;
                     previous[next] = current;
-                    frontier.Enqueue(next);
+                    if (!frontier.Contains(next)) frontier.Add(next);
                 }
             }
             return null;

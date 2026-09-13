@@ -126,21 +126,24 @@ namespace AstraExpress
                 for (int i = 0; i + 1 < path.Count; i++)
                 {
                     Vector3 start = Position(path[i], 0.35f), end = Position(path[i + 1], 0.35f);
-                    GuideLine(new[] { Vector3.Lerp(start, end, 0.08f), Vector3.Lerp(start, end, 0.42f) }, 0.12f);
-                    GuideLine(new[] { Vector3.Lerp(start, end, 0.58f), Vector3.Lerp(start, end, 0.92f) }, 0.12f);
+                    GuideLine(new[] { GuideSurface(Vector3.Lerp(start, end, 0.08f)), GuideSurface(Vector3.Lerp(start, end, 0.42f)) }, 0.12f);
+                    GuideLine(new[] { GuideSurface(Vector3.Lerp(start, end, 0.58f)), GuideSurface(Vector3.Lerp(start, end, 0.92f)) }, 0.12f);
                 }
             }
             foreach (var cell in cells)
             {
                 var tile = Box("Suggested route tile", linkGhost, Position(cell, 0.22f), new Vector3(1.70f, 0.025f, 1.70f), linkFillMaterial);
+                tile.transform.rotation = GroundRotation(cell.X, cell.Y, Vector3.forward);
                 tile.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
             }
             for (int i = linkSegment; i < linkStops.Count; i++)
             {
                 Vector3 corner = Position(linkStops[i], 0.34f) - new Vector3(0.93f, 0, 0.93f);
-                GuideLine(new[] { corner, corner + Vector3.right * 1.86f, corner + new Vector3(1.86f, 0, 1.86f), corner + Vector3.forward * 1.86f, corner }, 0.075f);
+                GuideLine(new[] { corner, corner + Vector3.right * 1.86f, corner + new Vector3(1.86f, 0, 1.86f), corner + Vector3.forward * 1.86f, corner }.Select(point => GuideSurface(point, 0.34f)).ToArray(), 0.075f);
             }
         }
+
+        private Vector3 GuideSurface(Vector3 point, float height = 0.35f) => Position(point.x / 2, point.z / 2, height);
 
         private void GuideLine(Vector3[] points, float width)
         {
@@ -194,8 +197,8 @@ namespace AstraExpress
             Vector3 center = bounds.center;
             Vector3 span = bounds.size;
             Vector3 right = worldCamera.transform.right, up = worldCamera.transform.up;
-            float horizontal = (Mathf.Abs(span.x * right.x) + Mathf.Abs(span.z * right.z)) * 0.5f + 3;
-            float vertical = (Mathf.Abs(span.x * up.x) + Mathf.Abs(span.z * up.z)) * 0.5f + 3;
+            float horizontal = (Mathf.Abs(span.x * right.x) + Mathf.Abs(span.y * right.y) + Mathf.Abs(span.z * right.z)) * 0.5f + 3;
+            float vertical = (Mathf.Abs(span.x * up.x) + Mathf.Abs(span.y * up.y) + Mathf.Abs(span.z * up.z)) * 0.5f + 3;
             worldCamera.orthographicSize = Mathf.Clamp(Mathf.Max(horizontal / (worldCamera.aspect * 0.60f), vertical / 0.55f), 10, 31);
             cameraTarget = center + worldCamera.transform.right * (worldCamera.orthographicSize * worldCamera.aspect * 0.18f);
             PositionCamera();

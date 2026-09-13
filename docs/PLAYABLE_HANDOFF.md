@@ -4,6 +4,8 @@
 
 This document records the first ore checkpoint. The subsequent [fuel-powered frontier milestone](FUEL_MILESTONE.md) adds Fluxite plants, a four-train fleet, new controls, and its own validation evidence; historical limitations below describe the first checkpoint only.
 
+The later [two-elevation terrain milestone](TERRAIN_MILESTONE.md) adds the eastern plateau, ramp passes, height-aware A* routing, and slope-aware infrastructure without NavMesh, bridges, or tunnels.
+
 ## Result and timing
 
 The first profitable mining railway loop works in both Unity Play Mode and the locally served Web build. The original approximately 09:35 Singapore target was not met: the first Web build failed at 08:34 because the semantic bridge's runtime assembly referenced an Editor-only API. The user fixed that dependency in its separate repository. The retry succeeded at 10:34, followed by interactive browser and Editor checks. Do not describe this checkpoint as delivered within the original 90-minute window.

@@ -67,7 +67,7 @@ Blender can supply missing vehicle or infrastructure meshes. Image generation is
 
 ## Import conventions
 
-The playable floor uses the Space Kit's `terrain.fbx`, retaining its rust-colored rock material through URP conversion. Each flat mesh fits one 2-unit cell with a narrow grid seam. Fog replaces every terrain material slot until that cell is explored. Ramps and raised terrain are not used: the current vehicles, rails, and building placement share a flat ground plane.
+The playable floor uses the Space Kit's `terrain.fbx`, `terrain_ramp.fbx`, and `terrain_side.fbx`, retaining their rock materials through URP conversion. Each mesh fits one 2-unit cell; the upper plateau is 1.5 units above the lowlands. Ramps and impassable hillsides face uphill toward the east. Flat tiles retain narrow grid seams; slope edges meet adjacent levels. Plateau bedrock fills the exposed outer edge. Fog replaces every terrain material slot until its cell is explored. Terrain-only mesh colliders support accurate picking, while movement samples the matching simulation height profile.
 
 - One gameplay tile is 2 Unity units square. Use a consistent metre-based scale.
 - Ground lies on XZ with Y up. Vehicles face positive local Z and use ground-centred pivots; wheels pivot around their axles.

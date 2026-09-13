@@ -36,3 +36,14 @@ One real game-frame request completed through the hosted Agents API on the merge
 A complete interactive Fluxite delivery chain was not replayed during this merge check; fuel delivery, generation, and parking were exercised by the simulation harness and coaching cases. This distinction matters when evaluating visual guidance for that chain.
 
 Private `.env`, runtime sessions, logs, builds, and OS files remain excluded from Git. The 1,354 existing assets covered by LFS attributes but committed as raw blobs were checked byte-for-byte against HEAD and left unchanged; no bulk asset normalization was included.
+
+
+## Subsequent terrain merge
+
+The later pull from `origin/main` at `ed5ec78` conflicted in network drawing and world labels. Both were resolved while preserving height-aware navigation, terrain colliders and readable terrain meshes, the custom conduit casing/core and building sockets, coach input isolation, and numbered connection guides.
+
+Custom power lanes now sample their actual offset positions, split at ramp boundaries, reject non-traversable neighbors, and lift sockets with plateau buildings. Guide dashes and outlines follow the surface, ramp tiles tilt, and camera framing includes elevation. Exploration suggestions use only reachable, already-revealed ground and do not expose hidden passes.
+
+Validation: all 31 policy tests passed; the reusable simulation harness passed 82 scenario assertions (41 fleet/fuel and 41 terrain) plus 40,732 repeated invariant assertions across 10,168 steps. The old valid plant fixture at `(16,5)` now straddles a ramp, so it moved to level ground at `(14,5)`; its old location is explicitly tested as a rejected, no-charge build. Terrain cases cover both passes in both directions, hillside blocking, no-charge invalid routes, plateau power/rail connectivity, deliveries and cargo-safe parking.
+
+The merged WebGL build succeeded at 67,461,289 bytes with a 26-second build step (`Logs/terrain-merge-web-build.log`). Browser verification checked startup, existing interface/coach, and mouse-issued rover navigation toward and through the ramp. A full rendered plateau supply chain was not replayed in this conflict-resolution pass; its mechanics are covered by the simulation harness.

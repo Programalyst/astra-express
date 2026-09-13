@@ -99,6 +99,8 @@ public static class AstraExpressEditor
         game.OreModel = LoadModel(SpaceRoot + "rock_largeA.fbx");
         game.TrainModel = LoadModel(SpaceRoot + "monorail_trainFront.fbx");
         game.TerrainModel = LoadModel(SpaceRoot + "terrain.fbx");
+        game.RampModel = LoadModel(SpaceRoot + "terrain_ramp.fbx");
+        game.HillsideModel = LoadModel(SpaceRoot + "terrain_side.fbx");
         EditorSceneManager.SaveScene(scene, ScenePath);
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
         PlayerSettings.productName = "Astra Express";

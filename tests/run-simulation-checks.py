@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile and run fleet/fuel checks against the project's actual simulation."""
+"""Compile and run fleet/fuel checks against the project's actual simulation and terrain."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory(prefix="astra-simulation-checks-") as directory
     subprocess.run([
         str(mono), str(compiler), "-nologo", "-langversion:latest", "-out:" + str(output),
         str(args.project / "Assets/Scripts/AstraExpress/ColonySimulation.cs"),
+        str(args.project / "Assets/Scripts/AstraExpress/TerrainGrid.cs"),
         str(Path(__file__).resolve().parent / "SimulationMergeChecks.cs"),
     ], check=True)
     subprocess.run([str(mono), str(output)], check=True)

@@ -247,10 +247,24 @@ namespace AstraExpress
                 for (int y = 0; y < ColonySimulation.Height; y++)
                 {
                     var cell = new Cell(x, y);
-                    if (Simulation.IsRevealed(cell) && Simulation.StructureAt(cell) == null) clear.Add(cell);
+                    if (Simulation.IsRevealed(cell) && Simulation.Terrain.Walkable(cell) && Simulation.StructureAt(cell) == null) clear.Add(cell);
                 }
-            // Explore a known edge of the fog, without consulting hidden deposits.
-            var edge = clear.Where(cell => ColonySimulation.Directions.Any(d => ColonySimulation.InBounds(cell + d) && !Simulation.IsRevealed(cell + d)))
+            // Only suggest a reachable revealed frontier. Never route the player
+            // through a hillside or an undiscovered ramp using hidden terrain data.
+            var revealedGround = new HashSet<Cell>(clear);
+            var reachable = new HashSet<Cell> { Simulation.RoverCell };
+            var frontier = new Queue<Cell>();
+            frontier.Enqueue(Simulation.RoverCell);
+            while (frontier.Count > 0)
+            {
+                var current = frontier.Dequeue();
+                foreach (var direction in ColonySimulation.Directions)
+                {
+                    var next = current + direction;
+                    if (revealedGround.Contains(next) && Simulation.Terrain.CanTraverse(current, next) && reachable.Add(next)) frontier.Enqueue(next);
+                }
+            }
+            var edge = clear.Where(cell => reachable.Contains(cell) && ColonySimulation.Directions.Any(d => ColonySimulation.InBounds(cell + d) && !Simulation.IsRevealed(cell + d)))
                 .OrderBy(cell => Math.Abs(cell.X - Simulation.RoverX) + Math.Abs(cell.Y - Simulation.RoverY)).ThenByDescending(cell => cell.X).ToList();
             if (edge.Count > 0) state.frontier = CoachPosition(edge[0]);
             foreach (var cell in clear.OrderBy(cell => Math.Abs(cell.X - Simulation.Colony.Port.X) + Math.Abs(cell.Y - Simulation.Colony.Port.Y)))

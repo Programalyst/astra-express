@@ -16,24 +16,50 @@ namespace AstraExpress
             foreach (var cell in Simulation.Conduits)
             {
                 bool connected = Simulation.PoweredCells.Contains(cell);
-                Vector3 node = Position(cell) + PowerLaneOffset;
-                DrawPowerJunction(node, connected ? powerMaterial : darkPowerMaterial);
+                DrawPowerJunction(cell, connected ? powerMaterial : darkPowerMaterial);
                 foreach (var direction in ColonySimulation.Directions)
                 {
                     var adjacent = cell + direction;
-                    if (!Simulation.Conduits.Contains(adjacent) || direction.X + direction.Y < 0) continue;
-                    DrawPowerCable(node, Position(adjacent) + PowerLaneOffset, connected);
+                    if (!Simulation.Conduits.Contains(adjacent) || direction.X + direction.Y < 0 ||
+                        !Simulation.Terrain.CanTraverse(cell, adjacent)) continue;
+                    DrawSurfacePowerCable(cell, adjacent, connected);
                 }
             }
 
             foreach (var structure in Simulation.Structures) DrawBuildingConnection(structure);
         }
 
-        private void DrawPowerJunction(Vector3 node, Material indicator)
+        private Vector3 PowerNode(Cell cell) => Position(cell.X + PowerLaneOffset.x / 2,
+            cell.Y + PowerLaneOffset.z / 2, PowerLaneOffset.y);
+
+        private void DrawPowerJunction(Cell cell, Material indicator)
         {
-            Box("Power junction housing", networkRoot, node, new Vector3(0.38f, 0.25f, 0.38f), foundationMaterial);
-            Box("Power junction light", networkRoot, node + Vector3.up * 0.145f,
+            Vector3 node = PowerNode(cell);
+            Quaternion rotation = GroundRotation(cell.X + PowerLaneOffset.x / 2,
+                cell.Y + PowerLaneOffset.z / 2, Vector3.forward);
+            var housing = Box("Power junction housing", networkRoot, node,
+                new Vector3(0.38f, 0.25f, 0.38f), foundationMaterial);
+            housing.transform.rotation = rotation;
+            var light = Box("Power junction light", networkRoot, node + rotation * Vector3.up * 0.145f,
                 new Vector3(0.24f, 0.045f, 0.24f), indicator);
+            light.transform.rotation = rotation;
+        }
+
+        private void DrawSurfacePowerCable(Cell from, Cell to, bool connected)
+        {
+            Vector3 previous = PowerNode(from);
+            float start = from.X + PowerLaneOffset.x / 2;
+            float end = to.X + PowerLaneOffset.x / 2;
+            // Network edges are drawn east or north only. Split at the tile edges
+            // so the casing and its glowing core follow both ends of each ramp.
+            if (from.X != to.X)
+                for (float boundary = Mathf.Floor(start + 0.5f) + 0.5f; boundary < end; boundary++)
+                {
+                    Vector3 next = Position(boundary, from.Y + PowerLaneOffset.z / 2, PowerLaneOffset.y);
+                    DrawPowerCable(previous, next, connected);
+                    previous = next;
+                }
+            DrawPowerCable(previous, PowerNode(to), connected);
         }
 
         private void DrawPowerCable(Vector3 start, Vector3 end, bool connected)
@@ -78,16 +104,17 @@ namespace AstraExpress
 
             // Use the actual model bounds: prefab footprints can be much smaller
             // than their foundation. The socket overlaps the model's front face.
-            Vector3 socket = new Vector3(body.center.x, 0.39f, body.min.z + 0.16f);
+            float groundHeight = building.position.y;
+            Vector3 socket = new Vector3(body.center.x, groundHeight + 0.39f, body.min.z + 0.16f);
             float foundationFront = building.position.z - structure.Size * 1.93f * 0.5f;
-            Vector3 node = Position(structure.Port) + PowerLaneOffset;
-            Vector3 ramp = new Vector3(node.x, 0.27f, foundationFront - 0.10f);
-            Vector3 elbow = new Vector3(socket.x, 0.27f, ramp.z);
-            Vector3 inlet = new Vector3(socket.x, 0.27f, socket.z - 0.22f);
+            Vector3 node = PowerNode(structure.Port);
+            Vector3 ramp = new Vector3(node.x, groundHeight + 0.27f, foundationFront - 0.10f);
+            Vector3 elbow = new Vector3(socket.x, groundHeight + 0.27f, ramp.z);
+            Vector3 inlet = new Vector3(socket.x, groundHeight + 0.27f, socket.z - 0.22f);
             DrawPowerCable(node, ramp, structure.Connected);
             DrawPowerCable(ramp, elbow, structure.Connected);
             DrawPowerCable(elbow, inlet, structure.Connected);
-            if (!Simulation.Conduits.Contains(structure.Port)) DrawPowerJunction(node, indicator);
+            if (!Simulation.Conduits.Contains(structure.Port)) DrawPowerJunction(structure.Port, indicator);
 
             Box("Building power socket", networkRoot, socket,
                 new Vector3(0.54f, 0.48f, 0.48f), foundationMaterial);
