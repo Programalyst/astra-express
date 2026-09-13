@@ -93,6 +93,8 @@ async function startGame() {
       devicePixelRatio: Math.min(window.devicePixelRatio || 1, 1.5)
     }, progress => { progressBar.value = 0.75 + progress * 0.25; });
     window.unityInstance = instance;
+    window.astraCoach?.ready(instance);
+    window.astraBotControl?.ready(instance);
     document.getElementById("loading").remove();
     canvas.focus();
     payloadUrls.forEach(url => URL.revokeObjectURL(url));

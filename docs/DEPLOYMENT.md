@@ -4,7 +4,11 @@
 
 Production URL: https://astra-express.leonard-lin-2003.chatgpt.site
 
-Current release: version 4, published at 14:11 Singapore time on 13 September 2026 from `b976723e520496fcc47f0ba483110fb3121bd5a1` (deployment `appgdep_6aa63e7bc34c8191b897bfac4724ead1`). It includes the eastern ore plateau, northern 2x2 Fluxite plateau, height-aware ramps and infrastructure, smooth rover-follow, and the 35° camera pitch. Unity compilation and the Web build succeeded. Compressed payload: 20,160,910 bytes. Sites reported deployment success; public access is unchanged. The camera and northern plateau source changes remain uncommitted in the main Unity repository; the deployment-only checkout is committed and pushed.
+Current release: version 5, published at 14:58 Singapore time on 13 September 2026 from `d1ab7ba33c702cdace6edabb8ea61cb4e8231dc7` (deployment `appgdep_6aa64973024481918d6c062db1a11593`). It includes the merged copilot UI and rule-based tips, fog and power-flow visuals, paired cliff prefab, camera updates, and power-flow initialization fix. The Unity source checkpoint is `1b56e00`; packaging now includes the copilot scripts/styles/icons and calls both copilot startup hooks after Unity loads. Web build succeeded; payload hashes, chunk limits, and referenced static files were verified. Compressed payload: 21,019,906 bytes in 12 pieces. Sites reported success; public access is unchanged.
+
+The owner explicitly chose to publish without the AI backend due to time constraints. Game-state tips and guidance are included, but AI screen analysis, questions, and plan generation require the separate server and are not available on this static deployment. No Python server, API key, or other secret was uploaded.
+
+Version 4 was published at 14:11 Singapore time from `b976723e520496fcc47f0ba483110fb3121bd5a1` (deployment `appgdep_6aa63e7bc34c8191b897bfac4724ead1`). It introduced both raised plateaus and the rover-follow/35° camera. Compressed payload: 20,160,910 bytes.
 
 Version 3 was published at 13:08 Singapore time from `1430220a4cee7d9e853ab155f275bab7059a4392` (deployment `appgdep_6aa62fd9c24c8191bf27591a7ff5faed`). It introduced the flat Kenney Space Kit floor. Compressed payload: 20,152,353 bytes.
 

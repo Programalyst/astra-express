@@ -48,6 +48,15 @@ config.downloadBytes = config.data.compressedBytes + config.wasm.compressedBytes
 copyFileSync(join(build, config.loader), join(destination, config.loader));
 copyFileSync(join(build, config.framework), join(destination, config.framework));
 copyFileSync(join(repository, "scripts", "sites-loader.js"), join(destination, "boot.js"));
+for (const match of html.matchAll(/(?:src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"/g)) {
+  copyFileSync(join(build, match[1]), join(destination, match[1]));
+}
+if (existsSync(join(build, "icons"))) {
+  mkdirSync(join(destination, "icons"), { recursive: true });
+  for (const filename of readdirSync(join(build, "icons"))) {
+    if (/^[A-Za-z0-9_-]+\.png$/.test(filename)) copyFileSync(join(build, "icons", filename), join(destination, "icons", filename));
+  }
+}
 const scripts = `<script id="build-config" type="application/json">${JSON.stringify(config).replaceAll("<", "\\u003c")}</script>\n  <script src="boot.js"></script>`;
 const page = html.replace(/<script>[\s\S]*?<\/script>/, scripts);
 if (page === html) throw new Error("Cannot find the original Unity loader script.");
