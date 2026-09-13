@@ -1,0 +1,28 @@
+#astrabot-settings-open { position:fixed; z-index:46; right:calc(var(--game-scale,1) * 400px); top:calc(var(--game-scale,1) * 17px); width:calc(var(--game-scale,1) * 36px); height:calc(var(--game-scale,1) * 36px); min-width:26px; min-height:26px; display:grid; place-items:center; padding:6px; border:1px solid #537c7b; border-radius:6px; background:#102b36; color:#bddbcf; cursor:pointer; }
+#astrabot-settings-open svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; }
+#astrabot-settings-open:hover,#astrabot-settings-open[aria-expanded=true] { background:#24534e; color:#d9ffeb; }
+#astrabot-settings { position:fixed; z-index:48; right:18px; top:max(65px,calc(var(--game-scale,1) * 62px)); width:min(370px,calc(100vw - 36px)); max-height:calc(100vh - max(65px,calc(var(--game-scale,1) * 62px)) - max(135px,calc(var(--game-scale,1) * 135px))); overflow:auto; padding:20px; border:1px solid #61827d; border-radius:14px; background:#102a33f7; box-shadow:0 14px 45px #00131ca6; color:#e2f3ee; font:14px/1.5 system-ui,sans-serif; }
+#astrabot-settings[hidden] { display:none; }
+#astrabot-settings header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#astrabot-settings h2 { margin:2px 0 0; font-size:21px; letter-spacing:-.02em; }
+#astrabot-settings .settings-eyebrow { font-size:10px; letter-spacing:.16em; color:#98cbbf; }
+#astrabot-settings p { margin:12px 0 0; color:inherit; font-size:13px; }
+#astrabot-settings .settings-source { border-radius:6px; padding:8px 10px; background:#173d42; color:#b2efcf; }
+#astrabot-settings .settings-steps { padding-left:20px; margin:17px 0; }
+#astrabot-settings .settings-steps li { margin:10px 0; padding-left:3px; }
+#astrabot-settings .settings-steps span { display:block; color:#adc2c6; font-size:12px; }
+#astrabot-settings a { color:#b3f0da; text-underline-offset:3px; }
+#astrabot-settings label { display:block; font-size:12px; color:#bbd2ce; margin-bottom:7px; }
+#astrabot-settings input { width:100%; border:1px solid #537a7e; border-radius:7px; padding:10px 12px; background:#091d28; color:#ebfaf4; font:15px system-ui,sans-serif; }
+#astrabot-settings input::placeholder { color:#789899; }
+#astrabot-settings button { border:1px solid #5b8781; border-radius:7px; padding:9px 12px; background:#234e4b; color:#e6f9ef; font:600 12px system-ui,sans-serif; cursor:pointer; }
+#astrabot-settings #astrabot-settings-close { border:0; background:transparent; padding:3px 9px; font-size:24px; color:#aec8c6; }
+#astrabot-settings .settings-actions { display:flex; gap:8px; margin-top:10px; }
+#astrabot-settings #astrabot-key-connect { flex:1; background:#96d8bc; color:#0b2c2f; border-color:#a8efce; }
+#astrabot-settings button:disabled { opacity:.5; cursor:wait; }
+#astrabot-settings [hidden] { display:none; }
+#astrabot-settings #astrabot-key-status { color:#ffe3a0; }
+#astrabot-settings #astrabot-key-status:empty { display:none; }
+#astrabot-settings .settings-note { font-size:11px; line-height:1.5; color:#a6bdc0; }
+#astrabot-settings :focus-visible,#astrabot-settings-open:focus-visible { outline:2px solid #b2f4d5; outline-offset:3px; }
+@media(max-height:570px) { #astrabot-settings { padding:14px; } #astrabot-settings .settings-steps { margin:10px 0; } }

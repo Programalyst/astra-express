@@ -259,12 +259,12 @@ class PlannerProgress:
     def __init__(self):
         self.goals = OrderedDict()
 
-    def prepare(self, data):
+    def prepare(self, data, namespace=""):
         now = time.monotonic()
         for key, record in list(self.goals.items()):
             if now - record['updated'] > 600:
                 del self.goals[key]
-        key = data['state']['session'] + ':' + hashlib.sha256(data['goal'].strip().encode()).hexdigest()[:16]
+        key = namespace + data['state']['session'] + ':' + hashlib.sha256(data['goal'].strip().encode()).hexdigest()[:16]
         record = self.goals.get(key)
         if record is None:
             record = {'goal': data['goal'].strip(), 'batches': [], 'updated': now, 'initialOre': visible_ore_origins(data['state'])}

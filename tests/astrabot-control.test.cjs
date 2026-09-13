@@ -248,3 +248,16 @@ test('an execution failure stays docked and preserves the plan for review',async
   assert.equal(h.e('bot-editor').hidden,true);assert.match(h.e('bot-status').textContent,/timed out/);
   h.e('bot-expand').onclick();assert.equal(h.e('bot-title').textContent,'A colony task');assert.equal(h.e('bot-start').hidden,true);
 });
+
+
+test('opening key settings stops takeover and closes the plan before text entry',async()=>{
+  const h=harness();h.plans.push(readyPlan([{type:'select',x:11,y:7}]));await h.submit();const run=h.start();await flush();
+  h.dispatch('astra:settings');await run;
+  assert.equal(h.api.active(),false);assert.equal(h.e('astrabot-task').hidden,true);
+  assert.ok(h.calls.some(c=>c.method==='CoachBotStop'));
+});
+test('changing the credential rejects a late plan and requires a new review',async()=>{
+  const h=harness(),late=deferred();h.plans.push(late);const pending=h.submit();await flush();
+  h.dispatch('astra:credentials');late.resolve(response(readyPlan()));await pending;
+  assert.equal(h.api.active(),false);assert.equal(h.e('bot-start').hidden,true);assert.equal(h.commands().length,0);
+});

@@ -7,6 +7,7 @@ from collections import deque
 import json
 import hashlib
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -236,12 +237,13 @@ class ManagedCoach:
     loop uses that same slot so sessions cannot be deleted underneath an active turn.
     Only session IDs are persisted for deletion after a process restart.
     """
-    def __init__(self, project, stats):
+    def __init__(self, project, stats, persistent=True):
+        self.persistent = persistent
         self.project, self.stats = project, stats
         self.sessions = {}
         self.pending_delete = set()
         self.registry = project / 'Logs/coach-agent-sessions.json'
-        if self.registry.is_file():
+        if self.persistent and self.registry.is_file():
             try:
                 self.pending_delete = {s for s in json.loads(self.registry.read_text())
                                        if isinstance(s, str) and s.startswith('sess_') and len(s) < 128}
@@ -249,6 +251,7 @@ class ManagedCoach:
                 pass
 
     def save_registry(self):
+        if not self.persistent: return
         self.registry.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.registry.with_suffix('.tmp')
         temporary.write_text(json.dumps(sorted(self.pending_delete | {s['id'] for s in self.sessions.values()})))
@@ -404,6 +407,8 @@ class CoachServer(ThreadingHTTPServer):
         self.project = project
         self.token = secrets.token_urlsafe(32)
         self.vision_slot = threading.BoundedSemaphore(1)
+        self.key_check_slot = threading.BoundedSemaphore(1)
+        self.last_key_check = -10.0
         self.requests = deque()
         self.last_request = -10.0
         self.stats = {'framesReceived':0,'completed':0,'failed':0,'lastFrameBytes':0,
@@ -446,7 +451,7 @@ class CoachHandler(SimpleHTTPRequestHandler):
         if self.path in ('/api/coach/config', '/api/astrabot/config'):
             config = settings(self.server.project)
             return self.json_response(200, {'configured':bool(config['key']), 'model':config['model'], 'token':self.server.token,
-                                            'stats':self.server.stats, 'intervalSeconds':12, 'engine':'agents-api', 'plannerAvailable':True})
+                                            'stats':self.server.stats, 'intervalSeconds':12, 'engine':'agents-api', 'plannerAvailable':True, 'acceptsTabKey':True})
         if self.path.startswith('/api/'): return self.json_response(404, {'error':'Not found'})
         return super().do_GET()
 
@@ -466,8 +471,46 @@ class CoachHandler(SimpleHTTPRequestHandler):
         self.send_error(404)
         return None
 
+    def request_config(self):
+        config = settings(self.server.project)
+        key = self.headers.get('X-Astra-OpenAI-Key')
+        if key is not None:
+            if not re.fullmatch(r'sk-[A-Za-z0-9_-]{16,508}', key):
+                raise ValueError('Invalid tab key')
+            config['key'] = key
+        return config, key is not None
+
+    def verify_tab_key(self):
+        # A non-generating model lookup. No key is stored, echoed, or logged.
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 64: return self.json_response(413, {'error':'Request too large'})
+            self.connection.settimeout(10)
+            if json.loads(self.rfile.read(length)) != {}: raise ValueError()
+            config, tab_key = self.request_config()
+            if not tab_key: raise ValueError()
+        except (ValueError, TypeError, TimeoutError):
+            return self.json_response(400, {'error':'Paste an OpenAI API key only'})
+        if not self.server.key_check_slot.acquire(blocking=False):
+            return self.json_response(429, {'error':'Key check in progress'})
+        try:
+            now = time.monotonic()
+            if now - self.server.last_key_check < 2: return self.json_response(429, {'error':'Wait before checking another key'})
+            self.server.last_key_check = now
+            request = Request('https://api.openai.com/v1/models/' + quote(config['model'], safe=''),
+                              headers={'Authorization':'Bearer ' + config['key'], 'Accept':'application/json'})
+            with urlopen(request, timeout=10) as response:
+                result = json.loads(response.read(65536))
+            if not isinstance(result, dict) or not result.get('id'): raise ValueError()
+            return self.json_response(200, {'verified':True})
+        except HTTPError as error:
+            return self.json_response(error.code if error.code in (401,403,429) else 502, {'error':'OpenAI key or model access check failed'})
+        except (URLError, TimeoutError, ValueError, OSError):
+            return self.json_response(502, {'error':'Could not check OpenAI model access'})
+        finally: self.server.key_check_slot.release()
+
     def do_POST(self):
-        if self.path not in ('/api/coach', '/api/astrabot/plan'): return self.json_response(404, {'error':'Not found'})
+        if self.path not in ('/api/coach', '/api/astrabot/plan', '/api/coach/key'): return self.json_response(404, {'error':'Not found'})
         planning = self.path == '/api/astrabot/plan'
         origin = self.headers.get('Origin')
         if not self.valid_host() or (origin and origin not in [f'http://127.0.0.1:{self.server.server_port}',f'http://localhost:{self.server.server_port}']):
@@ -475,6 +518,7 @@ class CoachHandler(SimpleHTTPRequestHandler):
         if not secrets.compare_digest(self.headers.get('X-Astra-Coach',''), self.server.token):
             return self.json_response(403, {'error':'Reload the game to reconnect AstraBot'})
         if self.headers.get('Content-Type','').split(';')[0] != 'application/json': return self.json_response(415, {'error':'JSON required'})
+        if self.path == '/api/coach/key': return self.verify_tab_key()
         try:
             length = int(self.headers.get('Content-Length','0'))
             if not 0 < length <= 3_000_000: return self.json_response(413, {'error':'Request too large'})
@@ -488,9 +532,11 @@ class CoachHandler(SimpleHTTPRequestHandler):
         except (ValueError, TypeError, TimeoutError): return self.json_response(400, {'error':'A valid goal, game frame, state and bounded progress are required' if planning else 'A valid game frame and current state are required'})
         self.server.stats['framesReceived'] += 1
         self.server.stats['lastFrameBytes'] = size
-        config = settings(self.server.project)
+        try: config, tab_key = self.request_config()
+        except ValueError: return self.json_response(400, {'error':'Invalid tab key; open AstraBot settings'})
         if not config['key']: return self.json_response(503, {'error':'Vision waiting for server key'})
         if not self.server.vision_slot.acquire(blocking=False): return self.json_response(429, {'error':'AstraBot is already reading a screen'})
+        temporary_agents = None
         try:
             now = time.monotonic()
             while self.server.requests and now-self.server.requests[0] > 3600: self.server.requests.popleft()
@@ -498,18 +544,23 @@ class CoachHandler(SimpleHTTPRequestHandler):
             if len(self.server.requests) >= 120: return self.json_response(429, {'error':'Hourly vision limit reached · game tips available'})
             self.server.last_request = now
             self.server.requests.append(now)
+            # Tab credentials cannot reuse another user's conversation or registry.
+            temporary_agents = ManagedCoach(self.server.project, self.server.stats, persistent=False) if tab_key else None
+            agents = temporary_agents or self.server.agents
+            progress = self.server.planner_progress
+            namespace = 'tab:' + hashlib.sha256(config['key'].encode()).hexdigest() + ':' if tab_key else ''
             if planning:
-                progress_key, context = self.server.planner_progress.prepare(data)
-                result = self.server.agents.advise(context, config, planner_key=progress_key)
-                self.server.planner_progress.remember(progress_key, result)
+                progress_key, context = progress.prepare(data, namespace=namespace)
+                result = agents.advise(context, config, planner_key=progress_key)
+                progress.remember(progress_key, result)
                 self.server.stats['plansCompleted'] += 1
             else:
-                result = self.server.agents.advise(data, config)
+                result = agents.advise(data, config)
             self.server.stats['completed'] += 1
             self.json_response(200,result)
         except HTTPError as error:
             self.server.stats['failed'] += 1
-            message = 'Server API key rejected' if error.code in (401,403) else 'OpenAI rate limit or credit limit reached' if error.code == 429 else 'OpenAI Agents planning unavailable' if planning else 'OpenAI Agents unavailable · game tip shown'
+            message = 'OpenAI key rejected; check AstraBot settings' if error.code in (401,403) else 'OpenAI rate limit or credit limit reached' if error.code == 429 else 'OpenAI Agents planning unavailable' if planning else 'OpenAI Agents unavailable · game tip shown'
             if planning:
                 diagnostic = self.record_planner_error(error)
                 self.json_response(502, {'error': message + '. No new actions started; completed work is kept.', 'diagnostic': diagnostic})
@@ -522,7 +573,10 @@ class CoachHandler(SimpleHTTPRequestHandler):
                 self.json_response(502, {'error': 'Next plan unavailable: ' + diagnostic['reason'] + '. No new actions started; completed work is kept.', 'diagnostic': diagnostic})
             else:
                 self.json_response(502, {'error':'Vision temporarily unavailable · game tip shown'})
-        finally: self.server.vision_slot.release()
+        finally:
+            try:
+                if temporary_agents is not None: temporary_agents.cleanup(config, all_sessions=True)
+            finally: self.server.vision_slot.release()
 
 def main():
     parser = argparse.ArgumentParser()

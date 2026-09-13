@@ -67,6 +67,7 @@
   });
   function setOpen(value, keepHighlight = false) {
     if (value && !enabled) return;
+    if (value && el("astrabot-settings") && !el("astrabot-settings").hidden) return;
     open = value; root.dataset.open = String(value); el("coach-panel").inert = !value;
     el("coach-launcher").setAttribute("aria-expanded", String(value));
     if (value) { if (current) render(current); csrf = ""; refreshConfig().then(() => maybeAsk(true)); }
@@ -112,7 +113,7 @@
     if (changedAction) { el("coach-details").open = false; root.querySelector(".coach-body").scrollTop = 0; }
   }
   function taskVisible() { const task = el("astrabot-task"); return !!task && !task.hidden; }
-  function cueBlocked() { return !enabled || document.hidden || taskVisible() || state?.pickingTile || state?.botBusy || window.astraBotControl?.active(); }
+  function cueBlocked() { return !enabled || document.hidden || (el("astrabot-settings") && !el("astrabot-settings").hidden) || taskVisible() || state?.pickingTile || state?.botBusy || window.astraBotControl?.active(); }
   function stageFor(cue) {
     return cue ? `${state?.session}:${state?.tool}:${state?.routeStart?.x},${state?.routeStart?.y}:${cue.id}:${cue.uiTarget || "world"}:${cue.target?.x},${cue.target?.y}` : "";
   }
@@ -237,11 +238,9 @@
   async function refreshConfig() {
     if (!enabled) return;
     try {
-      const response = await fetch("/api/coach/config", { cache:"no-store" });
-      if (!response.ok) throw new Error();
-      const config = await response.json(); if (!enabled) return; configured = config.configured; csrf = config.token;
+      const config = window.astraBotAPI ? await window.astraBotAPI.config() : await (await fetch("/api/coach/config", {cache:"no-store"})).json(); if (!enabled) return; configured = config.configured; csrf = config.token;
       if (!live) status("Screen reading off");
-      else if (!configured) status("Vision waiting for server key");
+      else if (!configured) status("Add a key in AstraBot settings ⚙");
       else if (!busy && !question) status(lastVisionAt ? "Watching while this panel is open" : "OpenAI ready · game screen only");
     } catch { configured = false; status("Game tips available · server offline"); }
   }
@@ -266,7 +265,7 @@
     try {
       const image = await capture();
       if (!enabled || !open || !live || version !== contextVersion) return;
-      const response = await fetch("/api/coach", { method:"POST", signal:requestController.signal,
+      const response = await (window.astraBotAPI?.request || fetch)("/api/coach", { method:"POST", signal:requestController.signal,
         headers:{ "Content-Type":"application/json", "X-Astra-Coach":csrf },
         body:JSON.stringify({ image, state:sentState, candidates:allowed, events:events.slice(-8), question:asked, contextVersion:version }) });
       const result = await response.json();
@@ -292,6 +291,11 @@
       if (question) maybeAsk(true);
     }
   }
+  document.addEventListener("astra:settings", () => { setOpen(false); });
+  document.addEventListener("astra:credentials", () => {
+    contextVersion++; controller?.abort(); rejectCapture(); configured = false; csrf = ""; lastVisionSignature = "";
+    refreshConfig();
+  });
   window.astraCoach = {
     enabled() { return enabled; },
     ready(instance) { game = instance; refreshConfig(); },

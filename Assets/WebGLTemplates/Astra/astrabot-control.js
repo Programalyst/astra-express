@@ -127,18 +127,15 @@
       for (let attempt = 0; attempt <= 6; attempt++) {
         checkActive();
         message(attempt ? "Refreshing the game view and planning…" : running ? "Checking progress and planning the next steps…" : "Reading the game screen and planning…");
-        const configResponse = await fetch("/api/coach/config", { cache:"no-store", signal:active.signal });
+        const config = window.astraBotAPI ? await window.astraBotAPI.config({signal:active.signal}) : await (await fetch("/api/coach/config", {cache:"no-store", signal:active.signal})).json();
         checkActive();
-        if (!configResponse.ok) throw new Error("Coach server is unavailable.");
-        const config = await configResponse.json();
-        checkActive();
-        if (!config.configured) throw new Error("Set the server's OpenAI API key before creating a plan.");
+        if (!config.configured) throw new Error("Add an OpenAI key in AstraBot settings (gear beside Copilot), then create a plan.");
         if (!state || state.session !== session || Date.now() - stateAt > 4000) throw new Error("Game state is stale. Reconnect before planning.");
         const image = await capture();
         checkActive();
         if (!state || state.session !== session || Date.now() - stateAt > 4000) throw new Error("Game state is stale. Reconnect before planning.");
         const snapshot = state;
-        const response = await fetch("/api/astrabot/plan", { method:"POST", signal:active.signal,
+        const response = await (window.astraBotAPI?.request || fetch)("/api/astrabot/plan", { method:"POST", signal:active.signal,
           headers:{"Content-Type":"application/json", "X-Astra-Coach":config.token},
           body:JSON.stringify({ goal, state:snapshot, image, selectedTile:checkpoint?.selectedTile ?? snapshot.pickedTile ?? null,
             previousPlan:plan ? {id:plan.planId, actions:plan.actions, results:results.slice(-60)} : results.length ? {id:"resumed",actions:[],results:results.slice(-60)} : null }) });
@@ -218,6 +215,8 @@
     } catch (error) { if (token === generation) stop(error.name === "AbortError" ? "Planning timed out. Your completed work is kept." : error.message); }
   };
   document.addEventListener("visibilitychange", () => { if (document.hidden && (running || planning)) stop("Paused takeover because the game tab was hidden. Your completed work is kept."); });
+  document.addEventListener("astra:settings", () => { stop("Settings opened. Completed work is kept."); close(); });
+  document.addEventListener("astra:credentials", () => { stop("Connection changed. Review your plan before continuing."); });
   window.astraBotControl = {
     ready(instance) { game = instance; enabled = window.astraCoach?.enabled?.() !== false; },
     setEnabled(value) { enabled = !!value; if (!enabled) { stop("AstraBot is switched off."); close(); } },
