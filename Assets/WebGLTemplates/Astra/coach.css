@@ -1,0 +1,54 @@
+#coach { --mint:#93ead5; --ink:#eaf5f3; --dim:#a3b8bb; position:fixed; z-index:20; left:18px; bottom:calc(var(--game-scale, 1) * 134px); font:14px/1.5 system-ui,sans-serif; color:var(--ink); pointer-events:none; }
+#coach[hidden] { display:none; }
+#coach [hidden] { display:none!important; }
+#coach button,#coach input { font:inherit; }
+#coach button { cursor:pointer; }
+.coach-button-art { width:20px; height:20px; object-fit:contain; flex:none; }
+.coach-actions button,#coach-ask,#coach-close { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+#coach-close .coach-button-art { width:17px; height:17px; }
+#coach button:focus-visible,#coach input:focus-visible { outline:2px solid var(--mint); outline-offset:4px; }
+#coach-launcher { pointer-events:auto; display:flex; align-items:center; gap:9px; padding:0; background:none; color:var(--ink); border:0; text-align:left; }
+.pip-avatar { display:block; width:70px; height:76px; overflow:visible; filter:drop-shadow(0 8px 13px #0008); flex-shrink:0; }
+.pip-float { animation:pip-hover 5s ease-in-out infinite; transform-origin:center; }
+.pip-eye { animation:pip-blink 7s infinite; transform-box:fill-box; transform-origin:center; }
+.coach-teaser { max-width:195px; padding:8px 13px; border:1px solid #99ead52b; border-radius:12px 12px 12px 2px; background:#122830ed; box-shadow:0 5px 25px #0003; }
+.coach-teaser strong { display:block; color:var(--mint); font-size:10px; letter-spacing:.13em; }
+.coach-teaser span { display:block; font-size:12px; line-height:1.4; }
+#coach-panel { position:absolute; bottom:82px; left:0; width:min(352px,calc(100vw - 36px)); border:1px solid #9be8d53d; border-radius:18px; background:linear-gradient(145deg,#17313af7,#0d202bf7 70%); box-shadow:0 16px 55px #0007; backdrop-filter:blur(16px); transform:translateY(15px) translateX(-12px); opacity:0; visibility:hidden; pointer-events:none; transition:transform .24s ease,opacity .24s ease,visibility .24s; max-height:calc(100vh - 245px); overflow:auto; }
+#coach[data-open="true"] #coach-panel { transform:translate(0); opacity:1; visibility:visible; pointer-events:auto; }
+#coach[data-open="true"] .coach-teaser { display:none; }
+.coach-header { display:flex; align-items:center; justify-content:space-between; padding:16px 18px 12px; border-bottom:1px solid #d2fff015; }
+.coach-name { font-size:16px; font-weight:650; letter-spacing:.01em; }
+.coach-role { margin-left:7px; color:var(--dim); font-size:11px; }
+#coach-close { border:0; background:#c7eee90c; color:#b9ced0; width:29px; height:29px; border-radius:50%; font-size:21px!important; line-height:1; }
+#coach-close:hover { background:#c7eee924; }
+.coach-body { padding:15px 18px 17px; min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#648f8a transparent; }
+.coach-controls { padding:10px 18px 12px; border-top:1px solid #d2fff015; flex-shrink:0; }
+#coach-panel { display:flex; flex-direction:column; overflow:hidden; }
+.coach-header,.coach-footer { flex-shrink:0; }
+.coach-source { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--mint); display:flex; align-items:center; gap:6px; }
+.coach-source::before { content:""; width:5px; height:5px; background:currentColor; border-radius:50%; }
+#coach-title { margin:8px 0!important; font-size:20px!important; line-height:1.25; letter-spacing:-.02em!important; font-weight:650; }
+#coach-copy { margin:8px 0 12px!important; color:#bccdce!important; font-size:13px!important; }
+#coach-observation { margin:8px 0!important; font-size:11px!important; color:#86adad!important; border-left:2px solid #8cd8c860; padding-left:8px; }
+#coach-steps { list-style:none; counter-reset:step; padding:0; margin:0 0 14px; display:grid; gap:10px; }
+#coach-steps li { counter-increment:step; display:flex; align-items:flex-start; gap:9px; font-size:12px; line-height:1.5; color:#edf5f1; }
+#coach-steps li::before { content:counter(step); width:18px; height:18px; border-radius:5px; flex-shrink:0; display:grid; place-items:center; background:#84d8c419; color:var(--mint); font-size:10px; margin-top:1px; }
+.coach-actions { display:flex; gap:8px; }
+.coach-actions button { border-radius:8px; padding:7px 12px; border:1px solid #8acabb30; background:transparent; color:#b6d1d1; font-size:12px!important; }
+.coach-actions button:first-child { background:var(--mint); color:#12332e; border-color:transparent; font-weight:650!important; }
+.coach-actions button:disabled { opacity:.5; cursor:default; }
+#coach-form { display:flex; gap:6px; margin-top:13px; padding-top:12px; border-top:1px solid #d2fff015; }
+#coach-question { flex:1; min-width:0; border:1px solid #98dac629; background:#061b2466; color:#eaf5f3; border-radius:7px; padding:8px 9px; font-size:12px!important; }
+#coach-question::placeholder { color:#78989e; }
+#coach-ask { border:0; border-radius:7px; background:#29434a; color:#b5ded4; padding:0 10px; font-size:12px!important; }
+.coach-footer { padding:10px 18px 12px; border-top:1px solid #d2fff015; display:flex; align-items:center; justify-content:space-between; gap:12px; color:#8babad; font-size:10px; }
+.coach-footer label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+#coach-live { accent-color:#87dcc7; margin:0; }
+#coach-status { text-align:right; max-width:190px; }
+#coach-spotlight { position:fixed; z-index:19; border:2px solid #c0ffce; width:48px; height:48px; transform:translate(-50%,-50%); border-radius:50%; pointer-events:none; box-shadow:0 0 0 6px #93ead51a,0 0 20px #8cddbb60; }
+#coach-spotlight span { position:absolute; top:53px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; background:#10282ff2; color:#c6efdf; padding:4px 8px; border-radius:5px; }
+@keyframes pip-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+@keyframes pip-blink { 0%,43%,47%,100%{transform:scaleY(1)} 45%{transform:scaleY(.12)} }
+@media (max-height:650px) { #coach-panel{bottom:64px;max-height:calc(100vh - 195px)} .pip-avatar{width:54px;height:58px} .coach-body{padding:11px 15px} #coach-steps{gap:6px} #coach-form{margin-top:8px;padding-top:8px} }
+@media (prefers-reduced-motion:reduce) { #coach-panel,.coach-teaser { transition:none; } .pip-float,.pip-eye { animation:none; } }

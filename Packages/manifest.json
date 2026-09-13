@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "com.gamenami.unity-scemantic-bridge": "file:/Users/leonardlin/workspace/unity-semantic-bridge/com.gamenami.unity-semantic-bridge",
     "com.unity.ai.navigation": "2.0.14",
     "com.unity.collab-proxy": "2.13.6",
     "com.unity.ide.rider": "3.0.40",

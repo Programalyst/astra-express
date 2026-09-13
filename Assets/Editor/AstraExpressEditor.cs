@@ -123,6 +123,8 @@ public static class AstraExpressEditor
         Status("building", "Building Web player to Builds/Web. Editor requests may wait until the build finishes.");
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
         PlayerSettings.WebGL.template = "PROJECT:Astra";
+        // A rebuild must not reuse cached data with a different WASM binary.
+        PlayerSettings.WebGL.nameFilesAsHashes = true;
         PlayerSettings.defaultWebScreenWidth = 1280;
         PlayerSettings.defaultWebScreenHeight = 720;
         PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize);

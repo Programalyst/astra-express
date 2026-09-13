@@ -1,0 +1,197 @@
+[
+  {
+    "name": "rover",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.594
+  },
+  {
+    "name": "extractor",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.609
+  },
+  {
+    "name": "solar",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.601
+  },
+  {
+    "name": "conduit",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.725
+  },
+  {
+    "name": "rail",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.702
+  },
+  {
+    "name": "train",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.509
+  },
+  {
+    "name": "colony",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.533
+  },
+  {
+    "name": "pause",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.673
+  },
+  {
+    "name": "play",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.642
+  },
+  {
+    "name": "restart",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.6
+  },
+  {
+    "name": "upgrade",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.678
+  },
+  {
+    "name": "park",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.611
+  },
+  {
+    "name": "focus",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.649
+  },
+  {
+    "name": "ask",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.529
+  },
+  {
+    "name": "close",
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "transparent_fraction": 0.618
+  }
+]

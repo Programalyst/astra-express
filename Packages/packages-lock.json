@@ -1,13 +1,5 @@
 {
   "dependencies": {
-    "com.gamenami.unity-scemantic-bridge": {
-      "version": "file:/Users/leonardlin/workspace/unity-semantic-bridge/com.gamenami.unity-semantic-bridge",
-      "depth": 0,
-      "source": "local",
-      "dependencies": {
-        "com.unity.nuget.newtonsoft-json": "3.2.2"
-      }
-    },
     "com.unity.ai.navigation": {
       "version": "2.0.14",
       "depth": 0,
@@ -98,13 +90,6 @@
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.6",
       "depth": 3,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://packages.unity.com"
-    },
-    "com.unity.nuget.newtonsoft-json": {
-      "version": "3.2.2",
-      "depth": 1,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"

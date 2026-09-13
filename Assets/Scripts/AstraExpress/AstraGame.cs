@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 
 namespace AstraExpress
 {
-    public sealed class AstraGame : MonoBehaviour
+    public sealed partial class AstraGame : MonoBehaviour
     {
         public GameObject RoverModel;
         public GameObject ColonyModel;
@@ -105,6 +105,8 @@ namespace AstraExpress
 
         private void ResetWorld()
         {
+            ResetCoach();
+            ResetLinkGuide();
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             worldRoot = new GameObject("Colony world").transform;
             ground.Clear(); ore.Clear(); buildings.Clear();
@@ -205,6 +207,8 @@ namespace AstraExpress
             HandleInput();
             Simulation.Step(Time.deltaTime);
             SyncWorld();
+            UpdatePowerVisuals();
+            UpdateLinkGuide();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
             MoveVisual(trainVisual, Position(Simulation.Train.X, Simulation.Train.Y, 0.24f));
             cargoVisual.gameObject.SetActive(Simulation.Train.Cargo > 0);
@@ -220,6 +224,7 @@ namespace AstraExpress
                 previousDeliveries = Simulation.Deliveries;
                 Debug.Log("ASTRA_DELIVERY " + diagnostics);
             }
+            PublishCoach();
         }
 
         private void MoveVisual(Transform visual, Vector3 position)
@@ -281,38 +286,24 @@ namespace AstraExpress
                     }
                 }
             }
-            foreach (var cell in Simulation.Conduits)
-            {
-                Material material = Simulation.PoweredCells.Contains(cell) ? powerMaterial : darkPowerMaterial;
-                Vector3 offset = new Vector3(0.66f, 0.10f, 0.66f);
-                Box("Power junction", networkRoot, Position(cell) + offset, new Vector3(0.27f, 0.22f, 0.27f), material);
-                foreach (var direction in ColonySimulation.Directions)
-                {
-                    var adjacent = cell + direction;
-                    if (!Simulation.Conduits.Contains(adjacent) || direction.X + direction.Y < 0) continue;
-                    Box("Conduit", networkRoot, (Position(cell) + Position(adjacent)) * 0.5f + offset, direction.X != 0 ? new Vector3(2, 0.1f, 0.12f) : new Vector3(0.12f, 0.1f, 2), material);
-                }
-            }
-            foreach (var structure in Simulation.Structures)
-            {
-                Box("Connection port", networkRoot, Position(structure.Port, 0.04f), new Vector3(1.65f, 0.06f, 1.65f), structure.Connected ? powerMaterial : darkPowerMaterial);
-            }
+            DrawPowerNetwork();
         }
 
         private bool OverUi(Vector2 screen)
         {
             Vector2 point = new Vector2(screen.x / UiScale, (Screen.height - screen.y) / UiScale);
-            return point.y < 72 || point.y > UiHeight - 128 || Sidebar.Contains(point) || new Rect(16, 88, 280, 165).Contains(point);
+            return OverLinkGuide(point) || point.y < 72 || point.y > UiHeight - 128 || Sidebar.Contains(point) || new Rect(16, 88, 280, 165).Contains(point);
         }
 
         private void HandleInput()
         {
+            if (coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
             var mouse = Mouse.current;
             var keyboard = Keyboard.current;
             if (mouse == null) return;
             if (keyboard != null)
             {
-                if (keyboard.escapeKey.wasPressedThisFrame) { routeStart = null; tool = Tool.Explore; }
+                if (keyboard.escapeKey.wasPressedThisFrame) { HideLinkGuide(); routeStart = null; tool = Tool.Explore; }
                 if (keyboard.spaceKey.wasPressedThisFrame) Simulation.Paused = !Simulation.Paused;
                 if (keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Explore);
                 if (keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Extractor);
@@ -367,7 +358,13 @@ namespace AstraExpress
                     tool = Tool.Explore;
                 }
             }
-            else if (!routeStart.HasValue)
+            else PlaceNetworkAt(target);
+        }
+
+        private void PlaceNetworkAt(Cell target)
+        {
+            if (Simulation.Paused || (tool != Tool.Conduit && tool != Tool.Rail)) return;
+            if (!routeStart.HasValue)
             {
                 if (Simulation.CanLay(new[] { target }, tool == Tool.Rail, out _, out string reason)) routeStart = target;
                 else Simulation.Message = reason;
@@ -378,7 +375,7 @@ namespace AstraExpress
             }
         }
 
-        private void SetTool(Tool next) { tool = next; routeStart = null; trainSelected = false; }
+        private void SetTool(Tool next) { if (next == Tool.Conduit || next == Tool.Rail) linkSuppressed = false; tool = next; routeStart = null; trainSelected = false; }
         private void PositionCamera() => worldCamera.transform.position = cameraTarget - worldCamera.transform.forward * 48;
         private void CenterColony() { cameraTarget = Position(7, 8); PositionCamera(); }
         private void CenterRover() { cameraTarget = Position(Simulation.RoverX, Simulation.RoverY); PositionCamera(); }
@@ -414,46 +411,10 @@ namespace AstraExpress
             if (!focused && Simulation != null) Simulation.Paused = true;
         }
 
-        private void Styles()
-        {
-            if (titleStyle != null) return;
-            titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 25, fontStyle = FontStyle.Bold, normal = { textColor = ink } };
-            headingStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, normal = { textColor = ink }, wordWrap = true };
-            bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, normal = { textColor = ink }, wordWrap = true };
-            smallStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, normal = { textColor = muted }, wordWrap = true };
-            labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, normal = { textColor = ink } };
-            buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, normal = { textColor = ink }, hover = { textColor = Color.white }, active = { textColor = Color.white } };
-        }
-
-        private static void Fill(Rect rectangle, Color color)
-        {
-            Color old = GUI.color;
-            GUI.color = color;
-            GUI.DrawTexture(rectangle, Texture2D.whiteTexture);
-            GUI.color = old;
-        }
-
-        private bool Button(Rect rectangle, string caption, bool active = false, bool enabled = true)
-        {
-            Color previous = GUI.backgroundColor;
-            bool previousEnabled = GUI.enabled;
-            GUI.backgroundColor = active ? new Color(0.18f, 0.65f, 0.65f) : new Color(0.25f, 0.32f, 0.44f);
-            GUI.enabled = enabled;
-            bool clicked = GUI.Button(rectangle, caption, buttonStyle);
-            GUI.enabled = previousEnabled;
-            GUI.backgroundColor = previous;
-            return clicked;
-        }
-
-        private void Panel(Rect rectangle)
-        {
-            Fill(rectangle, new Color(0.045f, 0.07f, 0.12f, 0.95f));
-            Fill(new Rect(rectangle.x, rectangle.y, rectangle.width, 2), new Color(0.25f, 0.43f, 0.51f));
-        }
-
         private void OnGUI()
         {
             if (Simulation == null) return;
+            if ((coachInputBlocked || Time.frameCount <= coachInputResumeFrame) && (Event.current.isMouse || Event.current.isKey || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
             Styles();
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * UiScale);
             DrawWorldLabels();
@@ -466,17 +427,18 @@ namespace AstraExpress
             Fill(new Rect(585, 39, 175, 6), new Color(0.17f, 0.23f, 0.30f));
             Fill(new Rect(585, 39, 175 * Simulation.Battery / 100, 6), Simulation.Battery < 12 ? gold : cyan);
             GUI.Label(new Rect(585, 49, 360, 20), $"SOLAR +{Simulation.Generation:0}/s    MINING -{Simulation.Demand:0.#}/s", smallStyle);
-            if (Button(new Rect(UiWidth - 214, 17, 92, 36), Simulation.Paused ? "RESUME" : "PAUSE", Simulation.Paused)) Simulation.Paused = !Simulation.Paused;
-            if (Button(new Rect(UiWidth - 112, 17, 92, 36), "RESTART")) { ResetWorld(); return; }
+            if (Button(new Rect(UiWidth - 214, 17, 92, 36), Simulation.Paused ? "Resume" : "Pause", Simulation.Paused)) Simulation.Paused = !Simulation.Paused;
+            if (Button(new Rect(UiWidth - 112, 17, 92, 36), "Restart")) { ResetWorld(); return; }
             DrawObjective();
             DrawSelection();
             DrawToolbar();
+            DrawLinkGuide();
             if (Simulation.Paused)
             {
                 Panel(new Rect(UiWidth / 2 - 180, UiHeight / 2 - 65, 360, 122));
                 GUI.Label(new Rect(UiWidth / 2 - 160, UiHeight / 2 - 50, 320, 30), "COLONY PAUSED", headingStyle);
                 GUI.Label(new Rect(UiWidth / 2 - 160, UiHeight / 2 - 18, 320, 28), "Press Space or Resume to continue.", bodyStyle);
-                if (Button(new Rect(UiWidth / 2 - 100, UiHeight / 2 + 17, 200, 30), "RESUME EXPLORATION", true)) Simulation.Paused = false;
+                if (Button(new Rect(UiWidth / 2 - 100, UiHeight / 2 + 17, 200, 30), "Resume exploration", true)) Simulation.Paused = false;
             }
         }
 
@@ -513,23 +475,45 @@ namespace AstraExpress
             float row = 180;
             if (trainSelected)
             {
-                Stat(left, ref row, "SERVICE", Simulation.Train.Phase.ToString());
+                Stat(left, ref row, "SERVICE", TrainStatus());
                 Stat(left, ref row, "CARGO", $"{Simulation.Train.Cargo} / {Simulation.Train.Capacity} ore");
-                Stat(left, ref row, "PAYMENT", "8 credits per delivered ore");
-                if (Button(new Rect(left, row + 10, width, 38), "PARK AT COLONY", enabled: Simulation.Train.Phase != TrainPhase.Parked)) Simulation.ParkTrain();
-                if (Button(new Rect(left, row + 58, width, 38), $"CAPACITY +4  /  {Simulation.Train.CapacityLevel * 100} cr", enabled: Simulation.Train.CapacityLevel < 3)) Simulation.UpgradeTrain();
+                Stat(left, ref row, "PAYMENT", "8 credits / ore");
+                bool parked = Simulation.Train.Phase == TrainPhase.Parked;
+                bool parking = Simulation.Train.ParkRequested && !parked;
+                if (Button(new Rect(left, row + 10, width, 38), parked ? "Parked at colony" : parking ? "Parking at colony..." : "Park at colony", enabled: !parked && !parking)) Simulation.ParkTrain();
+                int cost = Simulation.Train.CapacityLevel * 100;
+                bool maximum = Simulation.Train.CapacityLevel >= 3;
+                if (Button(new Rect(left, row + 58, width, 38), maximum ? "Capacity fully upgraded" : $"Capacity +4 / {cost} cr", enabled: !maximum && Simulation.Credits >= cost)) Simulation.UpgradeTrain();
+                GUI.Label(new Rect(left, row + 101, width, 35), maximum ? "Maximum capacity: 12 ore." : Simulation.Credits < cost ? $"Need {cost - Simulation.Credits} more credits." : "Adds four cargo slots at the next loading stop.", smallStyle);
             }
             else if (selected != null && selected.Kind == StructureKind.Extractor)
             {
-                string status = selected.Paused ? "PAUSED" : !selected.Connected ? "DISCONNECTED" : selected.Stock >= selected.Storage ? "STORAGE FULL" : selected.SuppliedFraction < 0.99f ? "LOW POWER" : "EXTRACTING";
+                string status = Simulation.Paused ? "Colony paused" : selected.Paused ? "Mine paused" : !selected.Connected ? "Needs power" : selected.Stock >= selected.Storage ? "Storage full" : selected.SuppliedFraction < 0.99f ? "Low power" : "Mining";
                 Stat(left, ref row, "STATUS", status);
-                Stat(left, ref row, "DEPOSIT", $"{selected.Size} x {selected.Size} / infinite ore");
-                Stat(left, ref row, "OUTPUT", $"{selected.Rate:0.##}/s  /  {selected.Demand:0.#} power/s");
                 Stat(left, ref row, "STORAGE", $"{selected.Stock} / {selected.Storage} ore");
-                Stat(left, ref row, "SOUTH PORT", selected.Port.ToString());
-                if (Button(new Rect(left, row + 5, width, 34), Simulation.Train.Source == selected ? "SERVICE ASSIGNED" : "DISPATCH TRAIN", enabled: Simulation.Train.Phase == TrainPhase.Parked)) Simulation.Dispatch(selected);
-                if (Button(new Rect(left, row + 46, 112, 34), selected.Paused ? "RESUME MINE" : "PAUSE MINE")) selected.Paused = !selected.Paused;
-                if (Button(new Rect(left + 122, row + 46, width - 122, 34), $"UPGRADE {selected.Level * 120}", enabled: selected.Level < 3)) Simulation.UpgradeExtractor(selected);
+                Stat(left, ref row, "OUTPUT", $"{selected.Rate:0.##}/s / {selected.Demand:0.#} power/s");
+                bool railConnected = Simulation.RailRoute(selected) != null;
+                bool trainRunning = Simulation.Train.Phase != TrainPhase.Parked;
+                bool served = trainRunning && Simulation.Train.Source == selected;
+                bool parking = trainRunning && Simulation.Train.ParkRequested;
+                Readiness(new Rect(left, row + 3, width, 42), selected.Connected, railConnected, trainRunning, served, parking);
+                string dispatchAction = Simulation.Paused ? "Resume colony" : !selected.Connected ? "Show power connection" : !railConnected ? "Show rail connection" :
+                    parking ? "Parking at colony..." : trainRunning ? served ? "Train running" : "Park to switch mine" : "Dispatch train";
+                bool actionEnabled = Simulation.Paused || !selected.Connected || !railConnected || (!parking && !served);
+                if (Button(new Rect(left, row + 61, width, 38), dispatchAction, active: actionEnabled, enabled: actionEnabled))
+                {
+                    if (Simulation.Paused) Simulation.Paused = false;
+                    else if (!selected.Connected) CoachGuideLink($"Conduit,{selected.Origin.X},{selected.Origin.Y}");
+                    else if (!railConnected) CoachGuideLink($"Rail,{selected.Origin.X},{selected.Origin.Y}");
+                    else if (trainRunning) { Simulation.ParkTrain(); SetTool(Tool.Explore); }
+                    else if (Simulation.Dispatch(selected)) SetTool(Tool.Explore);
+                }
+                GUI.Label(new Rect(left, row + 102, width, 18), parking ? "Wait here, then choose Dispatch train." : served ? TrainStatus() : $"{selected.Size} x {selected.Size} deposit · Level {selected.Level}", interfaceSmall);
+                if (Button(new Rect(left, row + 122, 112, 36), selected.Paused ? "Resume mine" : "Pause mine")) selected.Paused = !selected.Paused;
+                int upgradeCost = selected.Level * 120;
+                bool maximum = selected.Level >= 3;
+                if (Button(new Rect(left + 122, row + 122, width - 122, 36), maximum ? "Max level" : $"Upgrade\n{upgradeCost} cr", enabled: !maximum && Simulation.Credits >= upgradeCost)) Simulation.UpgradeExtractor(selected);
+                if (!maximum && Simulation.Credits < upgradeCost) GUI.Label(new Rect(left, row + 160, width, 16), $"Upgrade needs {upgradeCost - Simulation.Credits} more credits.", interfaceSmall);
             }
             else if (selected != null)
             {
@@ -545,8 +529,8 @@ namespace AstraExpress
                 Stat(left, ref row, "ENERGY", "2 power / tile travelled");
                 GUI.Label(new Rect(left, row + 16, width, 100), "Click ground to explore. Previously revealed terrain stays visible. At low power, pause mines and let solar recharge.", bodyStyle);
             }
-            if (Button(new Rect(left, panel.yMax - 52, 112, 34), "COLONY  [C]")) CenterColony();
-            if (Button(new Rect(left + 122, panel.yMax - 52, width - 122, 34), "ROVER  [V]")) CenterRover();
+            if (Button(new Rect(left, panel.yMax - 52, 112, 34), "Colony [C]")) CenterColony();
+            if (Button(new Rect(left + 122, panel.yMax - 52, width - 122, 34), "Rover [V]")) CenterRover();
         }
 
         private void Stat(float left, ref float row, string name, string value)
@@ -560,11 +544,13 @@ namespace AstraExpress
         {
             float bottom = UiHeight - 88;
             Panel(new Rect(16, bottom, UiWidth - 32, 72));
-            string[] names = { "1  EXPLORE", "2  EXTRACTOR", "3  SOLAR / 100", "4  CONDUIT / 2", "5  RAIL / 3" };
+            string[] names = { "Explore", "Extractor", "Solar", "Conduit", "Rail" };
+            string[] subtitles = { "Reveal the frontier", "From 150 cr", "100 cr / +2 power", "Power / 2 cr per tile", "Ore / 3 cr per tile" };
+            string[] icons = { "rover", "extractor", "solar", "conduit", "rail" };
             for (int index = 0; index < names.Length; index++)
-                if (Button(new Rect(28 + index * 157, bottom + 13, 147, 44), names[index], tool == (Tool)index && !trainSelected)) SetTool((Tool)index);
-            if (Button(new Rect(813, bottom + 13, 160, 44), "TRAIN / UPGRADES", trainSelected)) { trainSelected = true; selected = null; tool = Tool.Explore; routeStart = null; }
-            GUI.Label(new Rect(990, bottom + 12, UiWidth - 1030, 50), "WASD / MIDDLE DRAG: PAN\nSCROLL: ZOOM   SPACE: PAUSE", smallStyle);
+                if (ToolbarCard(new Rect(28 + index * 157, bottom + 13, 147, 44), names[index], subtitles[index], icons[index], (index + 1).ToString(), tool == (Tool)index && !trainSelected, index == 4 || index == 1 ? gold : cyan)) SetTool((Tool)index);
+            if (ToolbarCard(new Rect(813, bottom + 13, 160, 44), "Train", "Operations / upgrades", "train", null, trainSelected, gold)) { trainSelected = true; selected = null; tool = Tool.Explore; routeStart = null; }
+            GUI.Label(new Rect(990, bottom + 12, UiWidth - 1030, 50), "WASD / middle drag: pan\nScroll: zoom   Space: pause", smallStyle);
             Fill(new Rect(16, bottom - 38, UiWidth - 32, 30), new Color(0.045f, 0.07f, 0.12f, 0.9f));
             string message = Simulation.Message;
             if (tool == Tool.Conduit || tool == Tool.Rail)
@@ -591,8 +577,11 @@ namespace AstraExpress
                 if (!Simulation.FullyRevealed(deposit) || deposit.Extractor != null) continue;
                 WorldLabel(Position(deposit.Origin) + new Vector3(deposit.Size - 1, 1.3f, deposit.Size - 1), $"ORE  {deposit.Size}x{deposit.Size}  /  {deposit.Rate:0.##}/s", gold);
             }
-            WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
-            if (selected != null) WorldLabel(Position(selected.Port, 0.2f), "CONNECT HERE", cyan);
+            if (!LinkGuideActive || linkStops.Count < 2) WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
+            if (selected != null && selected != Simulation.Colony && (!LinkGuideActive || linkStops.Count < 2))
+                WorldLabel(Position(selected.Port, 0.2f),
+                    selected.Connected ? "POWER CONNECTED" : "CONNECT POWER HERE",
+                    selected.Connected ? cyan : gold);
         }
 
         private void WorldLabel(Vector3 position, string caption, Color accent)

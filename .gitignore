@@ -107,3 +107,13 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Local coaching server credentials
+/server/.env
+/server/__pycache__/
+/tests/__pycache__/
+
+# Local OS files and Unity performance-test output
+.DS_Store
+/Assets/Resources/PerformanceTestRunInfo.json*
+/Assets/Resources/PerformanceTestRunSettings.json*

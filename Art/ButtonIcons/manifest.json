@@ -1,0 +1,62 @@
+[
+  {
+    "name": "rover",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-4435c0dd-c3ad-4a76-9f5c-aa5c95c8259a.png"
+  },
+  {
+    "name": "extractor",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-a1b9ac06-cf67-4339-a8bd-175f74ab912a.png"
+  },
+  {
+    "name": "solar",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-16f021b2-d621-4456-b2b3-50f6fcba11e6.png"
+  },
+  {
+    "name": "conduit",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-b4a6103d-3065-4518-a94a-09db79e0ea44.png"
+  },
+  {
+    "name": "rail",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-cd2f0c97-06f0-4bcc-b800-7c52266ef403.png"
+  },
+  {
+    "name": "train",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-055361b6-756b-4bcd-9ad2-4f3fff1b7751.png"
+  },
+  {
+    "name": "colony",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-c5dee703-774e-452b-b2f4-80b7bba77d37.png"
+  },
+  {
+    "name": "pause",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-1f6c2f3f-28c7-4315-8038-0ded32aada6c.png"
+  },
+  {
+    "name": "play",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-c8af2c83-e6c9-490d-8105-fbf49eb37511.png"
+  },
+  {
+    "name": "restart",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-85957f6b-9efb-4ec8-a5ec-cc722a3cdb1f.png"
+  },
+  {
+    "name": "upgrade",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-e2c1d60c-ab99-47a0-9bc4-618dede6d21c.png"
+  },
+  {
+    "name": "park",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-b05e6a6f-99cb-4c2a-9ad5-2cdb92cebb8e.png"
+  },
+  {
+    "name": "focus",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-afa1c183-3747-4cb2-b407-1641b3394abb.png"
+  },
+  {
+    "name": "ask",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-476848dd-0834-441a-87aa-1a3e1ef6b284.png"
+  },
+  {
+    "name": "close",
+    "src": "/Users/zhenwei/.codex/generated_images/01a09924-cf48-7c80-9347-ccd0bfc7b0d1/exec-e273a74c-c0b2-4150-9018-a7d57624ccf9.png"
+  }
+]
