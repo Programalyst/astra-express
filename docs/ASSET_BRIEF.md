@@ -20,7 +20,7 @@ All deposit tiers are infinite and retain their mineral appearance. Visual feedb
 
 The user and teammate refine art direction, may provide asset packs, and review lighting and shaders. The assistant integrates chosen assets and validates them in Unity and the browser. Existing compatible assets should be assessed before producing replacements.
 
-This brief follows the revised [game design](GAME_DESIGN.md). No game assets have been downloaded, generated, modelled, or imported by the assistant.
+This brief follows the revised [game design](GAME_DESIGN.md). The supplied packs were imported by the user. The assistant has now integrated their selected models, added shared URP presentation materials, and generated the prototype terrain, infrastructure, and placement geometry at runtime. Vendor FBX files remain unchanged. See [Playable handoff](PLAYABLE_HANDOFF.md) for the validated checkpoint.
 
 ## Palette and readability
 

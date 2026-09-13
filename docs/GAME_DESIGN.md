@@ -4,6 +4,8 @@ Version 0.5 · 13 September 2026 · Pre-event implementation authorized
 
 The current 90-minute implementation commitment is defined in [Pre-event milestone](PRE_EVENT_MILESTONE.md). It deliberately implements a subset of this full-game design and protects a further 30-minute buffer.
 
+The first ore-delivery checkpoint is now implemented and validated in the Editor and local Chrome Web build. See [Playable handoff](PLAYABLE_HANDOFF.md) for exact scope, controls, evidence, known limits, and the missed pre-event timing; this full design still includes subsequent milestones.
+
 ## Game concept
 
 We explore a fog-covered alien landscape with a rover, discover ore deposits, and build a mining railway around an initial colony. Solar panels generate the power needed to explore and operate extractors. Conduits connect extractors to the electrical network; tracks and trains bring their output home. Delivered ore earns credits that fund new infrastructure and upgrades.

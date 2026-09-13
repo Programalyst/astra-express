@@ -4,6 +4,8 @@ Initial checks 12 September 2026; latest update 13 September 2026, Singapore tim
 
 ## Current status: 13 September
 
+Latest result: the first paying railway loop has been verified in Unity Play Mode and the local Chrome Web build. The initial Web export exposed a bridge runtime reference to an Editor-only API; the user fixed the bridge, and the retry succeeded at 10:34 SGT. The original pre-event deadline was missed. See [Playable handoff](PLAYABLE_HANDOFF.md) for launch instructions, validation, current limitations, and remaining deployment work. This result supersedes the earlier readiness statements below.
+
 Implementation is authorized for the [90-minute pre-event milestone](PRE_EVENT_MILESTONE.md), with a separate 30-minute buffer. The Unity MCP tools are now exposed in this session. A native `refresh_assets` call succeeded and polling reached `NO_COMPILATION`: the refresh completed, but that no-op check does not certify newly edited C# or a domain-reload cycle. The previous malformed-arguments issue below is historical, not a current blocker. The supplied Kenney packs and exact solar model are recorded in the asset brief. The current Git status reports only untracked design documents; earlier manifest/lockfile changes are no longer reported. A playable scene, real script-reload validation, Web export, browser performance, and public hosting remain to be proved.
 
 The following readiness notes retain the earlier setup evidence; this current-status section supersedes their stale configuration and planning-only statements.
