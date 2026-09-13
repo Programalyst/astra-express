@@ -56,6 +56,11 @@ public static class AstraExpressEditor
                 Status("switched", "Web target selected. Compilation may still be pending.");
             }
             else if (action == "buildweb") BuildWeb();
+            else if (action == "postprocessing")
+            {
+                AstraPostProcessingEditor.Apply();
+                Status("postprocessing", "Lightweight post-processing configured and scene saved.");
+            }
             else throw new InvalidOperationException("Unknown Editor job: " + action);
         }
         catch (Exception exception) { Status("failed", exception.ToString()); }
@@ -102,6 +107,7 @@ public static class AstraExpressEditor
         game.RampModel = LoadModel(SpaceRoot + "terrain_ramp.fbx");
         game.HillsideModel = LoadModel(SpaceRoot + "terrain_sideCliff_double.prefab");
         game.HillsideCornerModel = LoadModel(SpaceRoot + "terrain_sideCorner.fbx");
+        AstraPostProcessingEditor.Configure(scene, camera);
         EditorSceneManager.SaveScene(scene, ScenePath);
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
         PlayerSettings.productName = "Astra Express";
