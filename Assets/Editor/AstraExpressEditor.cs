@@ -114,6 +114,7 @@ public static class AstraExpressEditor
         game.SolarModel = LoadModel("Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx");
         game.ExtractorModel = LoadModel(SpaceRoot + "machine_generatorLarge.fbx");
         game.OreModel = LoadModel(SpaceRoot + "rock_largeA.fbx");
+        game.FluxiteModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Single Crystal.prefab");
         game.TrainModel = LoadModel(SpaceRoot + "monorail_trainFront.fbx");
         game.TerrainModel = LoadModel(SpaceRoot + "terrain.fbx");
         game.RampModel = LoadModel(SpaceRoot + "terrain_ramp.fbx");

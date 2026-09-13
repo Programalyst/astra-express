@@ -14,6 +14,7 @@ namespace AstraExpress
         public GameObject SolarModel;
         public GameObject ExtractorModel;
         public GameObject OreModel;
+        public GameObject FluxiteModel;
         public GameObject TrainModel;
         public GameObject TerrainModel;
         public GameObject RampModel;
@@ -180,9 +181,11 @@ namespace AstraExpress
             foreach (var deposit in Simulation.Deposits)
                 foreach (var cell in ColonySimulation.Footprint(deposit.Origin, deposit.Size))
                 {
-                    var cluster = Model(OreModel, "Ore", worldRoot, Position(cell, 0), 1.55f, 0.8f);
+                    bool fluxite = deposit.Resource == ResourceKind.Fluxite;
+                    bool crystal = fluxite && FluxiteModel != null;
+                    var cluster = Model(crystal ? FluxiteModel : OreModel, fluxite ? "Fluxite" : "Ore", worldRoot, Position(cell, 0), 1.55f, crystal ? 1.4f : 0.8f, crystal);
                     cluster.transform.Rotate(0, (cell.X * 37 + cell.Y * 19) % 360, 0);
-                    if (deposit.Resource == ResourceKind.Fluxite)
+                    if (fluxite && !crystal)
                         foreach (var renderer in cluster.GetComponentsInChildren<Renderer>()) renderer.sharedMaterial = fuelMaterial;
                     ore[cell] = cluster;
                 }
