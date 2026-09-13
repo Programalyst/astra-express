@@ -1,5 +1,7 @@
 # AstraBot: hosted Agents API integration
 
+This document describes the retained legacy Python server. The current Web template instead makes stateless Responses API calls directly from the browser with a tab-only player key. It does not create hosted Agents sessions. See [COACH.md](COACH.md) for the active integration and security tradeoffs.
+
 AstraBot's server now uses the **hosted OpenAI Agents API**. The previous implementation made individual `POST /v1/responses` calls and did not use Agents. This is not a rename or an Agents SDK wrapper: the transport creates managed sessions at `/v1/agents/sessions`, submits later messages to each session's events endpoint, and consumes its event stream. It retains the configured `gpt-5.4-mini` model. No new Python dependencies are required.
 
 The API distinctions and supported hosted session configuration are described in the [OpenAI Agents API overview](https://developers.openai.com/api/docs/guides/agents-api/overview) and [session creation reference](https://developers.openai.com/api/reference/python/resources/beta/subresources/agents/subresources/sessions/methods/create).

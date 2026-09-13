@@ -242,7 +242,7 @@
       if (!live) status("Screen reading off");
       else if (!configured) status("Add a key in AstraBot settings ⚙");
       else if (!busy && !question) status(lastVisionAt ? "Watching while this panel is open" : "OpenAI ready · game screen only");
-    } catch { configured = false; status("Game tips available · server offline"); }
+    } catch { configured = false; status("Game tips available · AI connection unavailable"); }
   }
   function rejectCapture() { if (pendingCapture) { clearTimeout(pendingCapture.timer); pendingCapture.reject(new Error("Capture cancelled")); pendingCapture = null; } }
   function capture() {

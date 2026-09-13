@@ -11,7 +11,7 @@
     <ol class="settings-steps"><li><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Create an OpenAI API key ↗</a><span>Add API credit to that project.</span></li><li>Paste the key below and connect.</li><li>Turn Copilot on and open AstraBot.</li></ol>
     <form id="astrabot-key-form" autocomplete="off"><label for="astrabot-key">OpenAI API key</label><input id="astrabot-key" type="password" placeholder="sk-…" maxlength="512" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="astrabot-key-privacy"><div class="settings-actions"><button id="astrabot-key-connect" type="submit">Connect for this tab</button><button id="astrabot-key-forget" type="button" hidden>Forget key</button></div></form>
     <p id="astrabot-key-status" role="status" aria-live="polite"></p>
-    <p id="astrabot-key-privacy" class="settings-note">Tab only · reload or Forget key clears it. Sent through this game’s server to OpenAI; never saved to files or browser storage.</p>
+    <p id="astrabot-key-privacy" class="settings-note">Tab only · reload or Forget key clears it. Sent directly to OpenAI, not this game’s host; never saved to files or browser storage. Browser scripts/extensions may access it: use a restricted, low-budget key, not a production key.</p>
     <p class="settings-note">Live help sends your game view and state to OpenAI. API usage is billed to the key owner, separately from ChatGPT.</p>`;
   document.body.append(button, panel);
   const el = id => document.getElementById(id);
@@ -22,9 +22,9 @@
   async function refresh() {
     try {
       const config = await api.config();
-      el("astrabot-key-source").textContent = config.tabKey ? "Connected · using your tab key" : config.serverConfigured ? "Ready · using the server key" : "Local game tips work without a key";
+      el("astrabot-key-source").textContent = config.tabKey ? `Connected directly to OpenAI · ${config.model}` : "Local game tips work without a key";
       el("astrabot-key-forget").hidden = !api.hasTabKey();
-    } catch { el("astrabot-key-source").textContent = "Coach server unavailable · local game tips still work"; }
+    } catch { el("astrabot-key-source").textContent = "Connection unavailable · local game tips still work"; }
   }
   function show(value) {
     if (value) {
@@ -56,7 +56,7 @@
   };
   el("astrabot-key-forget").onclick = () => {
     active++; api.forget(); el("astrabot-key").value = "";
-    message("Tab key cleared. A configured server key can still be used; switch Copilot off to stop help."); refresh();
+    message("Tab key cleared. AI requests stopped; local game tips still work."); refresh();
   };
   document.addEventListener("astra:credentials", refresh);
   window.addEventListener("pagehide", () => { el("astrabot-key").value = ""; });

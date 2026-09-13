@@ -1,5 +1,9 @@
 # AstraBot game planner
 
+## Current Web transport
+
+The current Web template calls OpenAI's Responses endpoint directly with a player-provided, tab-only key; it does not call the Python backend. See [COACH.md](COACH.md) for setup and credential risks. `astrabot-api.js` retains `/api/astrabot/plan` only as an internal operation selector, not a network destination. `astrabot-planning.js` validates the same bounded action schema and economic constraints locally, maintains up to four goal histories for ten minutes, and assigns a local plan ID. Review/Start/Stop and Unity's runtime checks are unchanged. The generated browser contract matches the existing Python rules/schema. The following sections document the retained legacy Python/Agents implementation and its plan format, not the current browser transport.
+
 `POST /api/astrabot/plan` uses the genuine hosted OpenAI Agents API to turn a natural-language goal, current game screenshot and current state into a visible batch of game actions. It uses the configured model and server-side key. It cannot execute actions itself: the browser's game-scoped adapter owns start/stop, visible execution and simulation acknowledgments. This is not OpenAI's native computer-use tool and provides no desktop, browser navigation, shell or arbitrary-code control.
 
 The hosted API also supports [application function tools](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), using `requires_action` and `tool_result` events. This implementation deliberately uses a structured plan/replan contract instead of claiming that a JSON plan is a native tool call. It runs with [no hosted execution environment](https://developers.openai.com/api/docs/guides/agents-api/architecture), no tools and no subagents.

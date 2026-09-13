@@ -4,9 +4,19 @@
 
 Production URL: https://astra-express.leonard-lin-2003.chatgpt.site
 
-Current release: version 5, published at 14:58 Singapore time on 13 September 2026 from `d1ab7ba33c702cdace6edabb8ea61cb4e8231dc7` (deployment `appgdep_6aa64973024481918d6c062db1a11593`). It includes the merged copilot UI and rule-based tips, fog and power-flow visuals, paired cliff prefab, camera updates, and power-flow initialization fix. The Unity source checkpoint is `1b56e00`; packaging now includes the copilot scripts/styles/icons and calls both copilot startup hooks after Unity loads. Web build succeeded; payload hashes, chunk limits, and referenced static files were verified. Compressed payload: 21,019,906 bytes in 12 pieces. Sites reported success; public access is unchanged.
+Latest submitted release: version 8, reported succeeded at 16:21 Singapore time on 13 September 2026 from `aca01dfc08d250cb106c32c935d9149a529cd98b` (deployment `appgdep_6aa65ce5b6b081918c5370b79ca55acf`). It adds content-hashed JavaScript/CSS filenames and a release-specific entry, `play-b0252fbd556aa500.html`. Packaging determinism, references, and payload integrity are covered by a new test; all 113 JavaScript tests pass. Public access is unchanged. Do not assume the new entry is available until public content verification passes: Sites propagation has lagged behind its succeeded status.
 
-The owner explicitly chose to publish without the AI backend due to time constraints. Game-state tips and guidance are included, but AI screen analysis, questions, and plan generation require the separate server and are not available on this static deployment. No Python server, API key, or other secret was uploaded.
+Follow-up verification after 16:27: both the main URL and release entry now reference version 8's hashed contract, planning, and API scripts. The live `astrabot-api.cf1d32d0691f0313.js` matches the local deployed file byte-for-byte, and the canonical settings script also matches. Version 8 has now propagated; reload the old browser page to replace its in-memory backend-based client.
+
+Verified public content at 16:22: the main URL serves the version 7 page and the correct direct-OpenAI transport, contract, and planning scripts (all three byte-for-byte equal to the local build). This fixes the old backend-dependent key flow after a browser reload. At 16:15, despite version 7's earlier succeeded status, the public site still served version 6 scripts; `/api/coach/config` returned fallback HTML, producing the reported unexpected `<` JSON error. Query-string cache busting and no-cache headers did not fix it. Reissuing version 7 deployment (`appgdep_6aa65c0b19c08191afaf28ce3d78a4f8`, succeeded 16:17) also did not immediately change public content. Verify actual public files when investigating deployment problems, not status alone.
+
+Version 7 was reported published at 16:13 Singapore time from `cacce7a53de5590a4dcbdb87f2a02a835c0e7540` (deployment `appgdep_6aa65b14d2d08191818d5252596559be`). It adds direct browser-to-OpenAI Responses coaching and planning with player-provided, tab-only keys; no game backend is required. Unity Web build and 112 JavaScript tests passed. Compressed payload: 21,032,804 bytes in 12 pieces. A successful real-key inference still needs owner verification. The exact deployed static files are committed in the deployment-only checkout.
+
+Version 6 was published at 15:51 Singapore time on 13 September 2026 from `576006d6e084867722ff839cdc0408b2f23bbdcc` (deployment `appgdep_6aa655f76c7c81919757992efb174e16`). Its Unity source checkpoint is `75da91c`. It introduced the latest AstraBot guidance, routing, and temporary API-key settings UI, which still required the separate backend. Compressed payload: 21,032,804 bytes in 12 pieces.
+
+Version 5 was published at 14:58 Singapore time on 13 September 2026 from `d1ab7ba33c702cdace6edabb8ea61cb4e8231dc7` (deployment `appgdep_6aa64973024481918d6c062db1a11593`). It includes the merged copilot UI and rule-based tips, fog and power-flow visuals, paired cliff prefab, camera updates, and power-flow initialization fix. The Unity source checkpoint is `1b56e00`; packaging includes the copilot scripts/styles/icons and calls both copilot startup hooks after Unity loads. Compressed payload: 21,019,906 bytes in 12 pieces.
+
+The owner explicitly chose to publish earlier releases without the AI backend due to time constraints. Those releases supported local tips but not hosted AI. Version 7 removes that backend dependency: players can connect their own OpenAI key in settings. No Python server, API key, or other secret was uploaded.
 
 Version 4 was published at 14:11 Singapore time from `b976723e520496fcc47f0ba483110fb3121bd5a1` (deployment `appgdep_6aa63e7bc34c8191b897bfac4724ead1`). It introduced both raised plateaus and the rover-follow/35° camera. Compressed payload: 20,160,910 bytes.
 
@@ -22,11 +32,15 @@ The reported splash-screen stall was investigated in Chrome: both scripts loaded
 
 ## Packaging
 
+The Web template supports player-provided keys with direct browser-to-OpenAI Responses calls, without any game backend. Keep the prompts, planning validator, transport, and settings scripts together; the packaging script copies all referenced template scripts. Never add an API key to static files or hosting configuration. See [COACH.md](COACH.md) for browser-key risks and setup.
+
+The packager fingerprints referenced JavaScript/CSS and the loader using file-content hashes. It writes both `index.html` and a deterministic `play-<content-hash>.html` entry. This avoids reusing asset cache keys between releases; a fresh entry is useful when the root document remains cached, but cannot bypass delayed platform deployment propagation. `node --test tests/sites-packaging.test.cjs` checks this behavior. Preserve prior entries/assets for existing open pages.
+
 The game remains a Unity Web build, hosted entirely on OpenAI Sites. No iframe, external asset host, cloud bucket, backend API, or runtime secret is required.
 
 The original export contains a 52,718,487-byte WebAssembly file and a 12,784,941-byte data file. A direct source upload failed with `artifacts_git_receive_pack_object_too_large`. The response did not identify the exact file-size limit; do not claim that it confirmed a 3 MB limit. An earlier HTTP/2 transport failure was a separate problem, resolved for subsequent upload attempts with per-command HTTP/1.1 and a 32 MiB Git request buffer.
 
-`scripts/prepare-sites-direct.mjs` compresses the two large assets with gzip and splits the compressed bytes into files of at most 2,000,000 bytes. It preserves the Unity loader/framework files and builds a small static entry page. The current build uses 11 payload files totalling 20,141,077 compressed bytes rather than 65,503,428 uncompressed payload bytes.
+`scripts/prepare-sites-direct.mjs` compresses the two large assets with gzip and splits the compressed bytes into files of at most 2,000,000 bytes. It preserves the Unity loader/framework files and builds a small static entry page. The current build uses 12 payload files totalling 21,032,804 compressed bytes rather than 68,600,510 uncompressed payload bytes.
 
 `scripts/sites-loader.js` downloads the pieces in order, decompresses them using the browser's `DecompressionStream`, verifies each complete asset's size and SHA-256, and supplies Blob URLs to Unity. The Unity application and resource accounting code are unchanged. The custom loader reports progress, retries failed piece downloads, and displays a reload message on errors. It requires a modern browser with gzip `DecompressionStream`, WebAssembly, and WebGL support; the packaged game has been exercised in local Chrome, not all browsers or mobile devices.
 

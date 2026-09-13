@@ -47,9 +47,17 @@ const config = {
 config.downloadBytes = config.data.compressedBytes + config.wasm.compressedBytes;
 copyFileSync(join(build, config.loader), join(destination, config.loader));
 copyFileSync(join(build, config.framework), join(destination, config.framework));
-copyFileSync(join(repository, "scripts", "sites-loader.js"), join(destination, "boot.js"));
+const versionedAssets = new Map();
+function versionAsset(filename, source) {
+  const bytes = readFileSync(source);
+  const versioned = filename.replace(/\.(js|css)$/, `.${hash(bytes).slice(0, 16)}.$1`);
+  writeFileSync(join(destination, versioned), bytes);
+  versionedAssets.set(filename, versioned);
+  return versioned;
+}
+const boot = versionAsset("boot.js", join(repository, "scripts", "sites-loader.js"));
 for (const match of html.matchAll(/(?:src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"/g)) {
-  copyFileSync(join(build, match[1]), join(destination, match[1]));
+  versionAsset(match[1], join(build, match[1]));
 }
 if (existsSync(join(build, "icons"))) {
   mkdirSync(join(destination, "icons"), { recursive: true });
@@ -57,10 +65,13 @@ if (existsSync(join(build, "icons"))) {
     if (/^[A-Za-z0-9_-]+\.png$/.test(filename)) copyFileSync(join(build, "icons", filename), join(destination, "icons", filename));
   }
 }
-const scripts = `<script id="build-config" type="application/json">${JSON.stringify(config).replaceAll("<", "\\u003c")}</script>\n  <script src="boot.js"></script>`;
-const page = html.replace(/<script>[\s\S]*?<\/script>/, scripts);
-if (page === html) throw new Error("Cannot find the original Unity loader script.");
+const scripts = `<script id="build-config" type="application/json">${JSON.stringify(config).replaceAll("<", "\\u003c")}</script>\n  <script src="${boot}"></script>`;
+const replaced = html.replace(/<script>[\s\S]*?<\/script>/, scripts);
+if (replaced === html) throw new Error("Cannot find the original Unity loader script.");
+const page = replaced.replace(/(src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"/g, (match, attribute, filename) => `${attribute}="${versionedAssets.get(filename) ?? filename}"`);
 writeFileSync(join(destination, "index.html"), page);
+const releasePage = `play-${hash(Buffer.from(page)).slice(0, 16)}.html`;
+writeFileSync(join(destination, releasePage), page);
 const retained = new Set([...config.data.parts, ...config.wasm.parts, config.framework, config.loader]);
 for (const filename of readdirSync(join(destination, "Build"))) {
   if (!retained.has("Build/" + filename)) unlinkSync(join(destination, "Build", filename));
@@ -72,4 +83,5 @@ mkdirSync(dirname(hostingPath), { recursive: true });
 writeFileSync(hostingPath, JSON.stringify(hosting, null, 2) + "\n");
 console.log(`Prepared ${config.data.parts.length + config.wasm.parts.length} payload files, each at most ${chunkLimit} bytes.`);
 console.log(`Compressed payload download: ${config.downloadBytes} bytes; original: ${config.data.bytes + config.wasm.bytes} bytes.`);
+console.log(`Fresh release entry: ${releasePage}`);
 console.log("Preserved the existing Sites project identity. No upload or deployment performed.");
