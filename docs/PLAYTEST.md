@@ -63,3 +63,16 @@ Reliability limit: in the longer final gameplay run, one aggregate snapshot reco
 Remaining design work belongs to the separate visual-analysis task: more distinct rail/power preview patterns, persistent ore identity around extractors, selective emissive materials and optional bloom. Its shader is a review prototype, not an imported or validated game shader. No Blender MCP capability was callable in this session.
 
 Handoff: final fresh-tab inspection confirmed the payment label reads “8 credits / ore” without clipping. A fresh, unpaused colony with Explore selected and Pip collapsed is left open on the final build; the original player tab is preserved separately. The disposable two-mine test tab was closed after its successful deliveries and upgrade checks.
+
+
+## 2026-09-13: next-click guidance and contextual panels
+
+The player reported invisible numbered markers, long advice and panels obscuring the board. Three subagents split the crosshair overlay, advice policy and contextual Unity panels. The bottom toolbar method was compared against its pre-change snapshot and preserved.
+
+Changes: one unnumbered next-click instruction; a bright, click-through crosshair over the actual tile, port or control; optional collapsed details; dismissible cues; and an explicit Show target control for hidden targets. Only active context panels are displayed. Building mode clears the sidebars, connecting shows compact connection status, and tile picking clears the panels. Selecting Solar, Extractor or Plant now takes priority over optional fleet upgrades while keeping affordability and placement checks.
+
+Live playtests at 1280 x 720 and 1028 x 940 followed the crosshair through revealing ore, placing an extractor, connecting power and rails, and dispatching a train. The latter run confirmed a paid delivery (320 to 352 credits, 4 ore, 1 trip). It also placed a suggested solar footprint, connected it through the colony port, and visibly increased solar generation from 2 to 4 power/second. Picking a task tile hid the panels and selected tile (11, 7) without moving the rover. Dismissing a cue kept it hidden for the current step; switching the copilot off hid its UI.
+
+The loop caught and fixed three specific issues: Cancel text wrapping in the compact connection strip; missing Explore guidance between completed rails and the now-hidden Dispatch control; and generic train-upgrade advice overriding a manually selected Solar tool. A final overlay pass added nearby panel-edge positions so labels remain near their crosshairs.
+
+Validation: 55 deterministic policy tests pass, including compact-sidebar dispatch handoff, construction intent, missing anchors, unavailable routes and credit limits. The backend subagent passed 42 tests with mocked upstream calls. Unity WebGL compilation succeeded in Logs/next-click-guidance-final-build.log. Served coach.js, coach.css and coach-policy.js match their source templates. These checks complement the visible playtests; they do not constitute a new end-to-end evaluation of remote planner reliability.

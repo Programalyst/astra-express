@@ -40,6 +40,24 @@ def events(answer=ANSWER, create=True, terminal='agent.session.turn.completed', 
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_diagnostic_categories_never_include_unrecognized_exception_arguments(self):
+        cases = [(coach.AgentTurnError('No completed final answer for this turn'), 'missing_final_answer'),
+                 (coach.AgentTurnError('Stream ended before a completed answer'), 'stream_incomplete'),
+                 (json.JSONDecodeError('private model text', 'private', 0), 'invalid_json_response'),
+                 (KeyError('private field'), 'missing_response_field'),
+                 (ValueError('private response'), 'plan_validation')]
+        for error, category in cases:
+            detail = coach.planner_error_details(error)
+            self.assertEqual(detail['category'], category)
+            self.assertNotIn('private', json.dumps(detail))
+
+    def test_client_disconnect_is_safely_ignored_by_json_writer(self):
+        from unittest.mock import Mock
+        handler = object.__new__(coach.CoachHandler)
+        handler.send_response = Mock(); handler.send_header = Mock(); handler.end_headers = Mock()
+        handler.wfile = Mock(); handler.wfile.write.side_effect = BrokenPipeError()
+        handler.json_response(502, {'error': 'No new actions started'})
+
     def test_agents_request_has_current_image_and_no_tools_or_sandbox(self):
         data = payload()
         coach.validate_payload(data)

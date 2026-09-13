@@ -27,28 +27,65 @@
       fleet.count >= fleet.max ? `All ${fleet.max} locomotives are assigned. Park a service before moving it to this mine; a capacity upgrade does not add a locomotive.` : `No locomotive is idle. Another costs ${fleet.cost} credits; keep ore deliveries earning or park an existing service.`,
       ["Open Fleet and select the locomotive you want to reassign.", "Click Park at colony, then wait for it to finish delivering and return to the colony.", "Select this extractor and click Dispatch idle train; full mine storage does not prevent dispatch."], b.origin);
   }
+  const buildingName = b => b?.kind === "Solar" ? "solar array" : b?.kind === "PowerPlant" ? "power plant" : "extractor";
+  function smartPlacementTip(s) {
+    const rail = s.tool === "Rail";
+    const buildings = (s.buildings || []).filter(b => b.kind === "Extractor" || b.kind === "PowerPlant" || (!rail && b.kind === "Solar"));
+    const available = p => (s.connectionTargets || []).find(t => same(t, p) && !same(t, s.routeStart));
+    let target = same(s.routeStart, s.colonyPort) ? null : available(s.colonyPort);
+    if (same(s.routeStart, s.colonyPort)) {
+      const pending = buildings.filter(b => rail ? !b.railConnected : !b.connected);
+      const ordered = [...pending.filter(b => same(b.origin, s.selected)),
+        ...pending.filter(b => !same(b.origin, s.selected) && b.kind !== "Extractor"),
+        ...pending.filter(b => !same(b.origin, s.selected) && b.kind === "Extractor")];
+      const destination = ordered.find(b => available(b.port));
+      target = destination ? available(destination.port) : pending.length ? null : (s.connectionTargets || []).find(p => !same(p, s.routeStart));
+    }
+    const destination = buildings.find(b => same(b.port, target));
+    const label = same(target, s.colonyPort) ? "colony port" : destination ? `${buildingName(destination)} port` : "destination port";
+    const invalid = !!s.placementReason;
+    const step = target ? `${invalid ? "Move to" : "Click"} the highlighted ${label}.` : "Move to a clear, explored tile.";
+    return {...tip(`route-preview-${s.tool}-${s.routeStart?.x}-${s.routeStart?.y}`, step,
+      s.placementReason || (target ? "This port has a valid, affordable connection." : "No suitable building port is reachable from this start."),
+      [step, ...(!target || invalid ? ["Click only when the preview is valid."] : [])], target || null),
+      autoCue:!!target, primaryStep:step};
+  }
   function routeTip(s, b, rail) {
     const route = rail ? b.railRoute : b.powerRoute;
     const noun = rail ? "rail" : "conduit";
-    if (!route || !route.possible) return tip(`${noun}-blocked-${b.origin.x}-${b.origin.y}`, `Check this ${noun} route`,
-      route?.reason || "The two ports need an explored, clear route.",
-      route?.reason?.includes("credits")
-        ? ["Keep any working train service running to earn the missing credits.", "If no paying route can be completed, Restart gives you a fresh colony. There are no refunds in this build."]
-        : ["Press 1 for Explore and uncover the ground between the ports.", "Keep buildings off the route. Existing network tiles can be reused for free."], b.port);
-    const segment = route.nextSegment || 0;
+    if (!route?.possible || (route.stops?.length || 0) < 2) return tip(`${noun}-blocked-${b.origin.x}-${b.origin.y}`, "Connection needs attention",
+      route?.reason || "Reveal a clear route between the ports.",
+      [route?.reason?.includes("credits") ? "Let a working ore train earn more credits." : "Explore clear ground between the ports."], null);
+    const segment = Math.min(route.nextSegment || 0, route.stops.length - 2);
     const started = s.routeStarted && same(s.routeStart, route.stops[segment]);
-    const first = segment + 1, second = first + 1;
-    const destination = second === route.stops.length ? `${b.kind === "Solar" ? "solar array" : b.kind === "PowerPlant" ? "power plant" : "extractor"}'s outlined port tile` : "highlighted corner tile";
-    const steps = started
-      ? [`Click marker ${second}, the ${destination}, to build this segment.`, "Right-click or Escape cancels the current placement without spending credits."]
-      : [`Choose ${rail ? "5 · Rail" : "4 · Conduit"} on the bottom toolbar, or click Show connection.`,
-         `Click marker ${first}, ${first === 1 ? "the small outlined colony port tile beside the train" : "the highlighted start tile"}.`,
-         `Click marker ${second}, the ${destination}, to build this segment.`];
-    if (second < route.stops.length) steps.push("At each corner, click it again to start the next segment, then follow the next numbered marker.");
-    steps.push(rail ? b.kind === "PowerPlant" ? "Select the Fluxite extractor, choose this plant as its destination, then Dispatch an idle locomotive." : isFuel(b) ? "Fluxite also needs rails to a selected power plant; it is not sold at the colony." : "When the rails join both ports, select the extractor and Dispatch an idle locomotive." : "Look for POWER CONNECTED and cyan socket lights to confirm the link.");
-    return { ...tip(`${noun}-${b.origin.x}-${b.origin.y}`, started ? `Now click marker ${second}` : rail ? "Link the two ports with rails" : "Connect the highlighted ports",
-      `${rail ? b.kind === "PowerPlant" ? "Connect this plant to the rail network so Fluxite can reach it." : isFuel(b) ? "Connect this Fluxite extractor to the colony depot rails, then its plant destination." : "Link the ports with tracks so the train can collect ore." : b.kind === "Solar" ? "Connect this solar array’s outlined port tile to the colony." : b.kind === "PowerPlant" ? "Connect this plant to the colony power grid; it also needs delivered Fluxite to generate power." : "The extractor is placed. Connect its outlined port tile to the colony to power it."} The translucent path is a suggestion. Remaining route: ${route.cost} credits.`,
-      steps, route.stops[started ? segment + 1 : segment]), link:{tool:rail ? "Rail" : "Conduit", origin:b.origin} };
+    const target = s.smartRouting ? (started ? b.port : s.colonyPort || route.stops[0]) : route.stops[started ? segment + 1 : segment];
+    const name = same(target, s.colonyPort) ? "colony port" : same(target, b.port) ? `${buildingName(b)} port` : "route tile";
+    const step = `Click the highlighted ${name}.`;
+    const purpose = rail ? b.kind === "PowerPlant" ? "Rails let Fluxite reach this plant." : isFuel(b) ? "Rails carry Fluxite to its plant." : "Rails let a train collect ore."
+      : b.kind === "Solar" ? "Power this solar array." : b.kind === "PowerPlant" ? "The plant also needs delivered Fluxite." : "Power is required before mining starts.";
+    return {...tip(`${noun}-${b.origin.x}-${b.origin.y}`, step, `${purpose} Connection: ${route.cost} credits.`, [step], target),
+      link:{tool:rail ? "Rail" : "Conduit", origin:b.origin}, autoCue:true, primaryStep:step};
+  }
+  function constructionIntent(s) {
+    if (!["Solar", "Extractor", "PowerPlant"].includes(s.tool)) return null;
+    if (s.tool === "Extractor") {
+      const deposits = s.deposits || [];
+      const affordable = deposits.filter(d => d.buildable && s.credits >= d.cost);
+      const deposit = affordable.find(d => same(d.origin, s.pickedTile)) || affordable.find(d => !isFuel(d)) || affordable[0];
+      if (deposit) return tip(`extractor-${deposit.origin.x}-${deposit.origin.y}`, "Place an extractor", `${deposit.cost} credits.`,
+        ["Click the highlighted resource patch."], deposit.origin);
+      const known = deposits.find(d => !isFuel(d)) || deposits[0];
+      const reason = known && s.credits < known.cost ? `This extractor costs ${known.cost} credits; you have ${s.credits}.`
+        : known?.reason || s.placementReason || "No revealed, clear resource patch is ready for an extractor.";
+      return tip("placement-blocked-Extractor", "Extractor placement unavailable", reason, ["Check the placement message before building."], null);
+    }
+    const solar = s.tool === "Solar", site = solar ? s.solarSite : s.plantSite, cost = solar ? 100 : s.plantCost ?? 250;
+    if (site && s.credits >= cost) return tip(solar ? "expand-power" : "build-plant", solar ? "Place a solar array" : "Place a power plant",
+      `${cost} credits, plus connections.`, ["Click the highlighted footprint."], site);
+    return tip(`placement-blocked-${s.tool}`, "Construction unavailable",
+      s.credits < cost ? `This building costs ${cost} credits; you have ${s.credits}.`
+        : s.placementReason || "No clear, explored 2 × 2 footprint with a free south port is available.",
+      [s.credits < cost ? "Let ore deliveries earn the missing credits." : "Find clear, explored ground before building."], null);
   }
   function baseAdvice(s) {
     if (!s) return [];
@@ -59,6 +96,7 @@
     const fleet = fleetState(s);
     const selected = mines.find(b => same(b.origin, s.selected));
     const ordered = selected ? [selected, ...mines.filter(b => b !== selected)] : mines;
+    if (s.smartRouting && s.routeStarted) return [smartPlacementTip(s)];
     if (s.routeStarted && !s.placementReason) {
       const rail = s.tool === "Rail";
       const planned = [...ordered, ...(s.buildings || []).filter(b => b.kind === "Solar" || b.kind === "PowerPlant")].find(b => {
@@ -67,15 +105,17 @@
       });
       if (planned) return [routeTip(s, planned, rail)];
     }
-    if (s.routeStarted) return [tip(`route-preview-${s.tool}-${s.routeStart?.x}-${s.routeStart?.y}`, "Finish this segment",
-      s.placementReason || `Your ${s.tool.toLowerCase()} starts at ${coord(s.routeStart)}.`,
-      ["Move the pointer to the destination port or a clear corner.", "Press R to change the bend; click to confirm a valid preview.", "Right-click or Escape cancels without spending credits."], s.routeStart)];
+    if (s.routeStarted) return [tip(`route-preview-${s.tool}-${s.routeStart?.x}-${s.routeStart?.y}`, "Check the route preview",
+      s.placementReason || "Choose an explored, clear endpoint.",
+      ["Move to a clear destination tile.", "Click a valid preview, or Escape to cancel."], null)];
     if (s.battery < 20 && s.demand > s.generation) {
       const active = ordered.find(b => b.connected && !b.paused && b.stock < b.storage);
       if (active) return [tip(`power-low-${active.origin.x}-${active.origin.y}`, "Let the battery recover",
         `Mining is using ${s.demand.toFixed(1)} power/s while the grid currently supplies ${s.generation.toFixed(1)}/s.`,
         ["Press 1 and select the extractor.", "Click Pause Mine in its sidebar. Connected solar keeps charging while the game runs.", "Add connected solar, or supply a connected power plant with Fluxite, before resuming all mines."], active.origin)];
     }
+    const construction = constructionIntent(s);
+    if (construction) return [construction];
     for (const b of (s.buildings || []).filter(b => (b.kind === "Solar" || b.kind === "PowerPlant") && !b.connected)) return [routeTip(s, b, false)];
     const selectedPlant = plants.find(p => same(p.origin, s.selected));
     if (selectedPlant) {
@@ -149,55 +189,92 @@
     return options.slice(0, 3);
   }
   function withCue(s, t) {
-    let uiTarget = null, cueLabel = "", targetLabel = "Look here";
-    const selectBuilding = (button, label) => {
-      targetLabel = "Select this building";
-      if (!s.trainSelected && same(s.selected, t.target)) { uiTarget = button; cueLabel = label; }
-      else if (s.tool !== "Explore") { uiTarget = "tool-explore"; cueLabel = "Choose 1 · Explore, then select the building"; }
+    let uiTarget = null, target = t.target, primaryStep = t.primaryStep || t.steps[0], autoCue = !!t.autoCue;
+    const anchor = id => s.uiAnchors?.some(a => a.id === id && a.visible !== false);
+    const control = (id, label, fallback = label) => {
+      uiTarget = anchor(id) ? id : null;
+      primaryStep = uiTarget ? label : fallback;
+      target = null;
     };
     const chooseTool = (tool, number, label) => {
-      targetLabel = label;
-      if (s.tool !== tool) { uiTarget = "tool-" + (tool === "PowerPlant" ? "plant" : tool.toLowerCase()); cueLabel = `Choose ${number} · ${tool === "PowerPlant" ? "Plant" : tool}`; }
+      if (s.tool !== tool) control("tool-" + (tool === "PowerPlant" ? "plant" : tool.toLowerCase()),
+        `Choose ${tool === "PowerPlant" ? "Plant" : tool}.`, `Press ${number} for ${tool === "PowerPlant" ? "Plant" : tool}.`);
+      else primaryStep = label;
     };
-    if (t.id === "resume") { uiTarget = "pause"; cueLabel = "Resume your colony"; }
-    else if (t.link) {
-      chooseTool(t.link.tool, t.link.tool === "Rail" ? 5 : 4, "Click the highlighted port or marker");
-      if (s.tool === t.link.tool && !s.routeStarted) t = {...t, steps:t.steps.slice(1)};
-      targetLabel = t.steps[s.tool === t.link.tool ? 0 : 1] || targetLabel;
-    }
+    const selectBuilding = (button, label) => {
+      // Network placement keeps the mine selected but hides its normal sidebar.
+      // Leave that tool before offering a sidebar action that is not yet visible.
+      if (!s.trainSelected && same(s.selected, t.target) && anchor(button)) control(button, label);
+      else if (s.tool !== "Explore") chooseTool("Explore", 1, "Select this building.");
+      else primaryStep = "Click the highlighted building.";
+    };
+    let body = t.body || "";
+    if (t.id === "resume") { autoCue = true; control("pause", "Click Resume.", "Press Space to resume."); body = "The colony is paused."; }
+    else if (s.routeStarted) { primaryStep = t.primaryStep || t.steps[0]; }
+    else if (t.link) chooseTool(t.link.tool, t.link.tool === "Rail" ? 5 : 4, t.primaryStep);
     else if (/^dispatch-/.test(t.id)) {
-      selectBuilding("primary-action", "Click Dispatch idle train");
-      if (uiTarget === "primary-action") t = {...t, steps:t.steps.filter(step => !step.startsWith("Press 1"))};
+      autoCue = true; selectBuilding("primary-action", "Click Dispatch idle train.");
+      body = isFuel((s.buildings || []).find(b => same(b.origin, t.target)) || {})
+        ? "An idle train delivers Fluxite to the selected power plant. Fuel is never sold."
+        : "An idle train can collect this mine’s ore. Deliveries earn 8 credits per ore.";
     }
-    else if (/^(power-low-|resume-mine-)/.test(t.id)) selectBuilding("mine-pause", t.id.startsWith("power-low-") ? "Pause this mine so the battery can recover" : "Resume this mine");
-    else if (t.id === "resume-plant") selectBuilding("plant-pause", "Resume this power plant");
-    else if (/^choose-plant-/.test(t.id)) selectBuilding("fuel-destination", "Choose the plant that should receive this fuel");
-    else if (/^buy-train-/.test(t.id)) { uiTarget = s.trainSelected ? "buy-train" : "fleet"; cueLabel = s.trainSelected ? `Buy train / ${s.trainCost ?? 150} cr` : "Open Fleet to add a locomotive"; }
-    else if (/^switch-mine-/.test(t.id)) { uiTarget = s.trainSelected ? "train-park" : "fleet"; cueLabel = s.trainSelected ? "Park this service before reassigning it" : "Open Fleet and choose a service to park"; }
+    else if (/^power-low-/.test(t.id)) { autoCue = true; selectBuilding("mine-pause", "Click Pause mine."); body = "Demand exceeds generation. Pause this mine; keep the game running to recharge."; }
+    else if (/^resume-mine-/.test(t.id)) { autoCue = true; selectBuilding("mine-pause", "Click Resume mine."); body = "Battery power is available; this mine is paused."; }
+    else if (t.id === "resume-plant") { autoCue = true; selectBuilding("plant-pause", "Click Resume plant."); body = "The plant can burn stored Fluxite when the battery needs power."; }
+    else if (/^choose-plant-/.test(t.id)) { autoCue = true; selectBuilding("fuel-destination", "Choose a power plant."); body = "Fluxite must go to a power plant; it is never sold."; }
+    else if (/^buy-train-/.test(t.id)) { autoCue = true; control(s.trainSelected ? "buy-train" : "fleet", s.trainSelected ? `Click Buy train / ${s.trainCost ?? 150} cr.` : "Open Fleet."); body = `All trains are assigned. Another costs ${s.trainCost ?? 150} credits; existing services keep running.`; }
+    else if (/^switch-mine-/.test(t.id)) { autoCue = true; control(s.trainSelected ? "train-park" : "fleet", s.trainSelected ? "Click Park at colony." : "Open Fleet."); body = "No train is idle. Park the selected service before reassigning it; carried cargo is delivered first."; }
     else if (t.id === "upgrade-train") {
-      uiTarget = !s.trainSelected ? "fleet" : (s.selectedTrainIndex ?? 0) === t.trainIndex ? "train-capacity" : "train-next";
-      cueLabel = uiTarget === "train-capacity" ? "Upgrade the selected locomotive's capacity" : `Select locomotive ${t.trainIndex + 1} in Fleet`;
+      autoCue = true; const id = !s.trainSelected ? "fleet" : (s.selectedTrainIndex ?? 0) === t.trainIndex ? "train-capacity" : "train-next";
+      control(id, id === "fleet" ? "Open Fleet." : id === "train-next" ? "Choose the next locomotive." : "Click Capacity +4.");
+      const train = fleetState(s).trains.find(v => v.index === t.trainIndex);
+      body = `Four more cargo slots cost ${(train?.capacityLevel ?? 1) * 100} credits. This upgrades one train.`;
     }
-    else if (/^(extractor-\d|expand-mine-|fuel-extractor-)/.test(t.id)) chooseTool("Extractor", 2, "Click this revealed patch to place the extractor");
-    else if (t.id === "expand-power") chooseTool("Solar", 3, "Place the solar array on this clear footprint");
-    else if (t.id === "build-plant") chooseTool("PowerPlant", 6, "Place the power plant on this clear footprint");
-    else if (["explore", "expand-frontier", "find-fuel", "plant-needed"].includes(t.id)) chooseTool("Explore", 1, "Click here to send the rover toward unexplored ground");
-    // Only expose real controls from the current Unity sidebar and toolbar.
-    if (!s.uiAnchors?.some(anchor => anchor.id === uiTarget && anchor.visible !== false)) uiTarget = null;
-    return {...t, uiTarget, cueLabel, targetLabel};
+    else if (/^(extractor-\d|expand-mine-|fuel-extractor-)/.test(t.id)) {
+      autoCue = true; chooseTool("Extractor", 2, "Click the highlighted resource patch.");
+      const deposit = (s.deposits || []).find(d => same(d.origin, t.target));
+      body = `${deposit?.cost ?? "Known"} credits. ` + (isFuel(deposit || {}) ? "Fluxite fuels a power plant; it is never sold." : "The extractor needs connected power before it produces ore.");
+    }
+    else if (t.id === "expand-power") { autoCue = true; chooseTool("Solar", 3, "Click the highlighted solar footprint."); body = "100 credits plus wiring. A connected solar array adds 2 power/s."; }
+    else if (t.id === "build-plant") { autoCue = true; chooseTool("PowerPlant", 6, "Click the highlighted plant footprint."); body = `${s.plantCost ?? 250} credits. The plant needs power, rails and delivered Fluxite.`; }
+    else if (["explore", "expand-frontier", "find-fuel", "plant-needed"].includes(t.id)) {
+      autoCue = ["explore", "expand-frontier"].includes(t.id) && !!target && !s.roverMoving;
+      chooseTool("Explore", 1, target ? "Click the highlighted frontier tile." : "Explore clear ground at the fog edge.");
+      body = t.id === "find-fuel" ? "Reveal green Fluxite to fuel the plant." : t.id === "plant-needed" ? `A plant costs ${s.plantCost ?? 250} credits. Ore deliveries fund it.` : "The rover reveals nearby terrain as it moves.";
+    }
+    else if (t.id === "exploring") { primaryStep = "Let the rover reach its destination."; body = "Nearby ore becomes visible as the rover travels."; target = null; }
+    else if (t.id === "parking") { primaryStep = "Wait for the train to park."; target = null; body = "It delivers carried cargo before returning to the colony."; }
+    else if (t.id === "first-delivery") { primaryStep = "Let the train complete its delivery."; target = null; body = t.body.split(". ")[0] + ". Ore earns credits at the colony."; }
+    else if (t.id === "plant-battery-full") { primaryStep = "Keep the plant connected and unpaused."; target = null; body = "The full battery needs no power. Fuel is retained until energy is used."; }
+    else if (/^fuel-unloading-/.test(t.id)) { primaryStep = "Select the destination power plant."; body = "Fuel storage is full. A connected, unpaused plant makes room when the battery needs charging."; }
+    else if (/^mine-blocked-/.test(t.id)) {
+      if (/occupied/.test(body)) { target = s.frontier || null; chooseTool("Explore", 1, "Move the rover to the highlighted clear tile."); }
+      else { target = null; primaryStep = "Check the placement message."; }
+    }
+    else if (t.id === "extractor-unaffordable") { primaryStep = "Keep an ore train earning credits."; target = null; }
+    const placing = autoCue && !t.link && !s.routeStarted && ["Extractor", "Solar", "PowerPlant"].includes(s.tool) && !uiTarget;
+    if (placing && s.placementReason) { body = s.placementReason; primaryStep = "Move to the highlighted valid footprint."; }
+    // A cue never points at an invisible or unavailable UI control. Keyboard
+    // fallback is explicit; a later frame supplies the subsequent world click.
+    if (target?.visible === false) primaryStep = autoCue ? "Click Show target." : "Use Show me to find this tile.";
+    const extra = s.routeStarted && (s.placementReason || !target) ? ["Click a valid preview, or Escape to cancel."] : [];
+    body = body.length <= 180 ? body : body.slice(0, 177).replace(/\s+\S*$/, "") + "…";
+    return {...t, title:primaryStep.replace(/\.$/, ""), body, target, uiTarget, primaryStep,
+      cueLabel:primaryStep, targetLabel:primaryStep, autoCue:autoCue && (!!target || !!uiTarget), steps:[primaryStep, ...extra]};
   }
   function advise(s) { return s ? baseAdvice(s).map(t => withCue(s, t)) : []; }
   function signature(s, options) {
     // Deliveries must not erase an answer while the player reads it. Candidate changes
     // still invalidate newly affordable actions; purchases and link edits remain strategic.
     return JSON.stringify([s.session, s.paused, s.tool, s.routeStarted, s.routeStart?.x, s.routeStart?.y, s.selected?.x, s.selected?.y,
+      s.smartRouting, s.smartRouting ? (s.connectionTargets || []).map(p => [p.x,p.y]) : null,
       s.trainSelected, s.selectedTrainIndex, s.trainPhase === "Parked", s.trainParkRequested, s.capacityLevel, s.solarGeneration ?? s.generation,
       s.idleTrains, s.trainCount, s.canBuyTrain, s.fuelDestination?.x, s.fuelDestination?.y,
       (s.trains || []).map(t => [t.index,t.phase === "Parked",t.parkRequested,t.resource,t.capacityLevel,t.source?.x,t.source?.y,t.destination?.x,t.destination?.y,t.waitingForFuelSpace]),
       (s.buildings || []).map(b => [b.origin.x,b.origin.y,b.connected,b.railConnected,b.paused,b.level,b.served,b.resource,b.destination?.x,b.destination?.y,b.destinationRailConnected,
         b.kind === "PowerPlant" && [b.stock === 0,b.stock >= b.storage],
         ...[b.powerRoute,b.railRoute,b.destinationRailRoute].map(r => r && [r.possible,r.cost,r.nextSegment,(r.stops || []).map(p => [p.x,p.y])])]),
-      options.map(o => [o.id,o.steps,o.target?.x,o.target?.y,o.uiTarget]), s.placementReason]);
+      options.map(o => [o.id,o.steps,o.target?.x,o.target?.y,o.uiTarget,o.autoCue]), s.placementReason]);
   }
   const api = { advise, signature };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

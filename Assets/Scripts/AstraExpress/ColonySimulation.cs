@@ -251,6 +251,87 @@ namespace AstraExpress
             return result;
         }
 
+        // Preview and placement share this planner. Try the player's preferred bend,
+        // then its mirror, then an affordable detour across known traversable tiles.
+        public bool TryPlanNetworkRoute(Cell start, Cell end, bool rail, bool preferVertical,
+            out List<Cell> path, out int cost, out string reason)
+        {
+            return PlanNetworkRoute(start, end, rail, preferVertical, out path, out cost, out reason, null, 0);
+        }
+
+        public bool TryPlanSolarConnection(Cell requested, out List<Cell> path, out int cost, out string reason)
+        {
+            path = null; cost = 0;
+            if (!CanBuild(StructureKind.Solar, requested, out var origin, out int size, out int buildingCost, out reason)) return false;
+            var footprint = new HashSet<Cell>(Footprint(origin, size));
+            return PlanNetworkRoute(Colony.Port, new Cell(origin.X, origin.Y - 1), false, false,
+                out path, out cost, out reason, footprint, buildingCost);
+        }
+
+        private bool PlanNetworkRoute(Cell start, Cell end, bool rail, bool preferVertical,
+            out List<Cell> path, out int cost, out string reason, ISet<Cell> excluded, int reservedCredits)
+        {
+            path = null; cost = 0; reason = "";
+            if (!CanLay(new[] { start }, rail, out _, out reason) || !CanLay(new[] { end }, rail, out _, out reason)) return false;
+            foreach (bool bend in new[] { preferVertical, !preferVertical })
+            {
+                var candidate = Corridor(start, end, bend);
+                if ((excluded == null || !candidate.Any(excluded.Contains)) && CanLay(candidate, rail, out cost, out reason) && cost <= Credits - reservedCredits) { path = candidate; return true; }
+            }
+            var scores = SearchNetworkRoutes(start, rail, out var previous, excluded);
+            if (!scores.ContainsKey(end)) { reason = "No clear explored route. Reveal more ground or use a ramp pass."; cost = 0; return false; }
+            var detour = new List<Cell> { end };
+            var cursor = end;
+            while (!cursor.Equals(start)) { cursor = previous[cursor]; detour.Add(cursor); }
+            detour.Reverse();
+            if (!CanLay(detour, rail, out cost, out reason)) return false;
+            if (cost > Credits - reservedCredits) { reason = $"Connection costs {cost} credits after reserving {reservedCredits} for the building; {Credits} available."; return false; }
+            path = detour;
+            return true;
+        }
+
+        // One search supplies the legal destination overlay, instead of a path search
+        // for every tile each frame. Existing network tiles cost nothing to reuse.
+        public Dictionary<Cell, int> NetworkConnectionCosts(Cell start, bool rail)
+        {
+            var scores = SearchNetworkRoutes(start, rail, out _);
+            return scores.ToDictionary(pair => pair.Key, pair => pair.Value / 1024);
+        }
+
+        private Dictionary<Cell, int> SearchNetworkRoutes(Cell start, bool rail, out Dictionary<Cell, Cell> previous, ISet<Cell> excluded = null)
+        {
+            previous = new Dictionary<Cell, Cell>();
+            var scores = new Dictionary<Cell, int>();
+            bool Allowed(Cell cell) => IsRevealed(cell) && Terrain.Walkable(cell) && StructureAt(cell) == null && (excluded == null || !excluded.Contains(cell));
+            if (!Allowed(start)) return scores;
+            var network = rail ? Rails : Conduits;
+            int price = rail ? 3 : 2;
+            scores[start] = network.Contains(start) ? 0 : price * 1024;
+            previous[start] = start;
+            var frontier = new List<Cell> { start };
+            var visited = new HashSet<Cell>();
+            while (frontier.Count > 0)
+            {
+                int best = 0;
+                for (int i = 1; i < frontier.Count; i++) if (scores[frontier[i]] < scores[frontier[best]]) best = i;
+                var current = frontier[best]; frontier.RemoveAt(best);
+                if (!visited.Add(current)) continue;
+                foreach (var direction in Directions)
+                {
+                    var next = current + direction;
+                    if (visited.Contains(next) || !Allowed(next) || !Terrain.CanTraverse(current, next)) continue;
+                    // Fewer new tiles wins; distance breaks ties. Every simple route
+                    // is shorter than the 1024 multiplier on this 28 x 22 map.
+                    int score = scores[current] + (network.Contains(next) ? 0 : price * 1024) + 1;
+                    if (scores.TryGetValue(next, out int old) && old <= score) continue;
+                    scores[next] = score; previous[next] = current;
+                    if (!frontier.Contains(next)) frontier.Add(next);
+                }
+            }
+            return scores;
+        }
+
+
         public bool CanLay(IReadOnlyList<Cell> path, bool rail, out int cost, out string reason)
         {
             cost = 0;

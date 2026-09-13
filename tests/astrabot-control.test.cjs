@@ -43,7 +43,7 @@ function harness({autoCapture=true}={}) {
     calls.push({kind:'fetch',url,options});
     if(url==='/api/coach/config')return response({configured:true,token:'test-token'});
     const next=plans.length?plans.shift():completePlan();
-    return next?.promise ? next.promise : response(next);
+    return next?.promise ? next.promise : next?.json ? next : response(next);
   };
   vm.runInNewContext(source,{document,window,fetch,AbortController,queueMicrotask,console,
     Date:{now:()=>now},setTimeout:(fn,ms)=>{const id=++timerSequence;timers.set(id,{fn,ms});return id;},clearTimeout:id=>timers.delete(id),
@@ -64,7 +64,7 @@ function harness({autoCapture=true}={}) {
 
 test('creating a plan captures a frame but never starts gameplay without Start',async()=>{
   const h=harness();h.plans.push(readyPlan());await h.submit();
-  assert.equal(h.commands().length,0);assert.equal(h.e('bot-start').hidden,false,h.e('bot-status').textContent);assert.equal(h.api.active(),false);
+  assert.equal(h.commands().length,0);assert.equal(h.e('bot-start').hidden,true);h.e('bot-expand').onclick();assert.equal(h.e('bot-start').hidden,false,h.e('bot-status').textContent);assert.equal(h.api.active(),false);
   const request=h.calls.find(c=>c.url==='/api/astrabot/plan');const body=JSON.parse(request.options.body);
   assert.equal(body.image,'data:image/jpeg;base64,jpeg');assert.equal(body.state.session,'colony-1');
 });
@@ -146,4 +146,105 @@ test('switching AstraBot off cancels active planning and ignores a late reply',a
   late.resolve(response(readyPlan()));await request;
   assert.equal(h.e('astrabot-task').hidden,true);assert.equal(h.e('bot-start').hidden,true);
   assert.equal(h.commands().length,0);
+});
+
+const limited = error => ({ok:false,status:429,json:async()=>({error})});
+test('local busy retry captures a fresh screenshot and updated state before succeeding',async()=>{
+  const h=harness({autoCapture:false});h.plans.push(limited('AstraBot is already reading a screen'),readyPlan());
+  const request=h.submit();await flush();
+  const first=h.calls.filter(c=>c.method==='CoachCapture').at(-1);h.api.screenReady(first.value,'first-frame');await flush();
+  assert.match(h.e('bot-status').textContent,/Waiting.*screen reading/);
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+  h.advance(4000);h.receive({credits:412});h.fireTimer(4000);await flush();
+  const second=h.calls.filter(c=>c.method==='CoachCapture').at(-1);assert.notEqual(first.value,second.value);
+  h.api.screenReady(second.value,'new-frame');await request;
+  const bodies=h.calls.filter(c=>c.url==='/api/astrabot/plan').map(c=>JSON.parse(c.options.body));
+  assert.equal(bodies.length,2);assert.equal(bodies[0].image,'data:image/jpeg;base64,first-frame');
+  assert.equal(bodies[1].image,'data:image/jpeg;base64,new-frame');assert.equal(bodies[1].state.credits,412);
+  assert.equal(h.e('bot-start').hidden,true);h.e('bot-expand').onclick();assert.equal(h.e('bot-start').hidden,false);assert.equal(h.api.diagnostics().batches,1);assert.equal(h.commands().length,0);
+});
+test('Stop cancels a queued local-busy retry without sending another request',async()=>{
+  const h=harness();h.plans.push(limited('Wait a moment before asking again'),readyPlan());
+  const request=h.submit();await flush();h.stop();await request;
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+  assert.equal(h.calls.filter(c=>c.method==='CoachCapture').length,1);
+  assert.equal(h.api.active(),false);assert.equal(h.e('bot-start').hidden,true);
+});
+test('Off cancels a queued retry and no later frame restarts planning',async()=>{
+  const h=harness();h.plans.push(limited('AstraBot is already reading a screen'));
+  const request=h.submit();await flush();h.api.setEnabled(false);await request;h.receive({credits:550});await flush();
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+  assert.equal(h.api.active(),false);assert.equal(h.e('astrabot-task').hidden,true);
+});
+test('OpenAI quotas and hourly limits are never treated as retryable screen contention',async()=>{
+  for (const error of ['OpenAI rate limit or credit limit reached','Hourly vision limit reached · game tips available']) {
+    const h=harness();h.plans.push(limited(error));await h.submit();
+    assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+    assert.equal(h.api.active(),false);assert.equal(h.e('bot-status').textContent,error);
+  }
+});
+test('repeated screen contention has a finite retry count',async()=>{
+  const h=harness();for(let i=0;i<7;i++)h.plans.push(limited('AstraBot is already reading a screen'));
+  const request=h.submit();
+  for(let i=0;i<6;i++){await flush();h.fireTimer(4000);}
+  await request;assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,7);
+  assert.equal(h.api.active(),false);assert.match(h.e('bot-status').textContent,/still busy/);
+});
+test('the overall planning deadline cancels an in-flight screenshot',async()=>{
+  const h=harness({autoCapture:false});const request=h.submit();await flush();h.fireTimer(65000);await request;
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
+  assert.equal(h.api.active(),false);assert.match(h.e('bot-status').textContent,/timed out/);
+});
+
+
+test('composer minimizes and reopens without losing its draft or blocking the game',()=>{
+  const h=harness();h.api.open();h.e('bot-goal').value='Find new ore near the rover';
+  h.e('bot-minimize').onclick();
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-editor').hidden,true);
+  assert.equal(h.e('astrabot-task').hidden,false);assert.equal(h.e('bot-expand').hidden,false);
+  assert.ok(h.calls.some(c=>c.method==='CoachSetInputBlocked'&&c.value==='2'));
+  h.e('bot-expand').onclick();assert.equal(h.e('bot-editor').hidden,false);
+  assert.equal(h.e('bot-goal').value,'Find new ore near the rover');
+});
+
+test('ready plan remains docked until explicit review and survives collapse or close',async()=>{
+  const h=harness();h.plans.push(readyPlan());await h.submit();
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-start').hidden,true);
+  h.e('bot-expand').onclick();assert.equal(h.e('bot-start').hidden,false);
+  assert.equal(h.e('bot-editor').hidden,true);assert.equal(h.e('bot-plan-body').hidden,false);
+  h.e('bot-minimize').onclick();h.e('bot-expand').onclick();
+  assert.equal(h.e('bot-title').textContent,'A colony task');assert.equal(h.e('bot-start').hidden,false);
+  h.e('bot-close').onclick();h.api.open();assert.equal(h.e('bot-start').hidden,false);
+  h.e('bot-edit').onclick();assert.equal(h.e('bot-goal').value,'Connect the mine');assert.equal(h.e('bot-start').hidden,true);
+  assert.equal(h.e('bot-edit').textContent,'Back to plan');h.e('bot-edit').onclick();assert.equal(h.e('bot-start').hidden,false);
+});
+
+test('tile picking and selection keep a compact dock rather than reopening the composer',()=>{
+  const h=harness();h.api.open();h.e('bot-goal').value='Wire this solar panel';h.e('bot-pick').onclick();
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-editor').hidden,true);
+  assert.equal(h.e('bot-expand').textContent,'Cancel picking');
+  h.receive({hasPickedTile:true,pickedTile:{x:3,y:10},pickingTile:false});
+  assert.equal(h.api.diagnostics().compact,true);assert.match(h.e('bot-status').textContent,/Tile selected/);
+  h.e('bot-expand').onclick();assert.equal(h.e('bot-editor').hidden,false);assert.equal(h.e('bot-goal').value,'Wire this solar panel');
+});
+
+test('running and completed plans stay compact with Stop available throughout execution',async()=>{
+  const h=harness();h.plans.push(readyPlan(),completePlan());await h.submit();const run=h.start();await flush();
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-stop').hidden,false);
+  h.e('bot-expand').onclick();assert.equal(h.e('bot-editor').hidden,true);assert.equal(h.e('bot-stop').hidden,false);
+  h.e('bot-close').onclick();assert.equal(h.api.active(),true);assert.equal(h.api.diagnostics().compact,true);
+  assert.equal(h.calls.filter(c=>c.method==='CoachBotStop').length,0);
+  h.acknowledge();await run;
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-stop').hidden,true);
+  assert.equal(h.e('bot-plan-body').hidden,true);assert.equal(h.e('bot-expand').hidden,false);
+  assert.equal(h.e('bot-status').textContent,'Goal complete.');
+});
+
+
+test('an execution failure stays docked and preserves the plan for review',async()=>{
+  const h=harness();h.plans.push(readyPlan());await h.submit();const run=h.start();await flush();
+  h.fireTimer(75000);await run;
+  assert.equal(h.api.diagnostics().compact,true);assert.equal(h.e('bot-expand').hidden,false);
+  assert.equal(h.e('bot-editor').hidden,true);assert.match(h.e('bot-status').textContent,/timed out/);
+  h.e('bot-expand').onclick();assert.equal(h.e('bot-title').textContent,'A colony task');assert.equal(h.e('bot-start').hidden,true);
 });

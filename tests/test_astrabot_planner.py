@@ -72,6 +72,46 @@ class PlanValidationTests(unittest.TestCase):
             planner.parse_plan(json.dumps(plan([action('explore', 10, 6), action('build_extractor', 11, 7)])), request_data())
         self.assertEqual(planner.parse_plan(json.dumps(plan([action('explore', 10, 6)])), request_data())['status'], 'ready')
 
+    def test_auto_exploration_is_coordinate_free_and_requires_a_fresh_batch(self):
+        data = request_data()
+        self.assertEqual(planner.parse_plan(json.dumps(plan([action('auto_explore')])), data)['actions'][0]['type'], 'auto_explore')
+        for actions in [[action('auto_explore', 20, 6)], [action('auto_explore', seconds=60)],
+                        [action('auto_explore', targetX=20, targetY=6)],
+                        [action('auto_explore'), action('build_extractor', 11, 7)]]:
+            with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan(actions)), data)
+        planner.parse_plan(json.dumps(plan([action('resume'), action('auto_explore')])), data)
+
+    def test_auto_exploration_schema_forbids_hidden_coordinate_or_duration_targets(self):
+        variants = planner.plan_schema()['properties']['actions']['items']['anyOf']
+        variant = next(v for v in variants if v['properties']['type']['enum'] == ['auto_explore'])
+        for field in ['x', 'y', 'targetX', 'targetY', 'trainIndex', 'seconds']:
+            self.assertEqual(variant['properties'][field], {'type': 'null'})
+
+    def test_new_ore_progress_excludes_preexisting_deposits_and_fluxite(self):
+        progress = planner.PlannerProgress(); data = request_data(); data['goal'] = 'Automatically discover new ores'
+        first = progress.prepare(data)[1]['serverProgress']
+        self.assertEqual(first['initialVisibleOreOrigins'], [{'x': 11, 'y': 7}])
+        self.assertEqual(first['newVisibleOreOrigins'], [])
+        data['state']['deposits'].append({'origin': {'x': 13, 'y': 3}, 'resource': 'Fluxite'})
+        self.assertEqual(progress.prepare(data)[1]['serverProgress']['newVisibleOreOrigins'], [])
+        data['state']['deposits'].append({'origin': {'x': 20, 'y': 6}, 'resource': 'Ore'})
+        self.assertEqual(progress.prepare(data)[1]['serverProgress']['newVisibleOreOrigins'], [{'x': 20, 'y': 6}])
+        data['state']['buildings'] = [mine()]; data['state']['deposits'] = data['state']['deposits'][1:]
+        self.assertEqual(progress.prepare(data)[1]['serverProgress']['initialVisibleOreOrigins'], first['initialVisibleOreOrigins'])
+
+    def test_solar_build_includes_known_wiring_and_reconnect_does_not_repurchase(self):
+        data = request_data(); data['state'].update(solarSite={'x': 2, 'y': 11}, credits=100,
+            solarSitePowerRoute={'possible': True, 'cost': 12})
+        with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), data)
+        data['state']['credits'] = 112
+        planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11), action('connect_conduit', 2, 11)])), data)
+        data['state']['buildings'] = [{'kind': 'Solar', 'origin': {'x': 2, 'y': 11}, 'connected': False,
+                                     'powerRoute': {'possible': True, 'cost': 12}}]
+        data['state']['credits'] = 12
+        planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), data)
+        data['state']['buildings'][0]['powerRoute']['possible'] = False
+        with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('build_solar', 2, 11)])), data)
+
     def test_wait_and_terminal_status_have_no_extra_actions(self):
         for seconds in [0, 21, None, True]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('wait', seconds=seconds)])), request_data())
@@ -165,8 +205,51 @@ class PlannerHTTPTests(unittest.TestCase):
         with patch.object(self.server.agents, 'advise', side_effect=ValueError('secret private details')):
             code, body = self.request('/api/astrabot/plan', request_data(), {'X-Astra-Coach': self.server.token})
         self.assertEqual(code, 502)
-        self.assertIn(b'no actions started', body)
+        self.assertIn(b'No new actions started', body)
+        self.assertIn(b'completed work is kept', body)
         self.assertNotIn(b'private details', body)
+        self.assertEqual(json.loads(body)['diagnostic']['category'], 'plan_validation')
+
+    def test_fixed_validator_reason_is_visible_without_echoing_arbitrary_exception_text(self):
+        (self.project / 'server/.env').write_text('OPENAI_API_KEY=private-test-value\n')
+        with patch.object(self.server.agents, 'advise', side_effect=ValueError('Invalid plan explanation')), patch('builtins.print') as logged:
+            code, body = self.request('/api/astrabot/plan', request_data(), {'X-Astra-Coach': self.server.token})
+        result = json.loads(body)
+        self.assertEqual(code, 502)
+        self.assertEqual(result['diagnostic']['reason'], 'Invalid plan explanation')
+        self.assertEqual(self.server.stats['lastPlannerError']['category'], 'plan_validation')
+        self.assertNotIn('private-test-value', str(logged.call_args_list))
+        self.assertTrue(self.server.vision_slot.acquire(blocking=False))
+        self.server.vision_slot.release()
+
+    def test_timeout_is_distinguished_from_rejected_plan_and_preserves_prior_work_wording(self):
+        (self.project / 'server/.env').write_text('OPENAI_API_KEY=private-test-value\n')
+        with patch.object(self.server.agents, 'advise', side_effect=TimeoutError('private upstream detail')), patch('builtins.print') as logged:
+            code, body = self.request('/api/astrabot/plan', request_data(), {'X-Astra-Coach': self.server.token})
+        self.assertEqual(code, 502)
+        self.assertEqual(json.loads(body)['diagnostic']['category'], 'upstream_timeout')
+        self.assertIn(b'No new actions started', body)
+        self.assertNotIn(b'private upstream detail', body)
+        self.assertNotIn('private upstream detail', str(logged.call_args_list))
+
+    def test_discovery_followup_accepts_completed_goal_in_reused_hosted_session(self):
+        import io
+        data = request_data(); data['goal'] = 'Automatically discover new ore'; data['state']['deposits'] = []
+        key, context = self.server.planner_progress.prepare(data)
+        proposed = plan([action('auto_explore')])
+        with patch.object(self.server.agents, 'request', return_value=base.events(answer=proposed)):
+            first = self.server.agents.advise(context, base.CONFIG, planner_key=key)
+        self.server.planner_progress.remember(key, first)
+        followup = request_data(); followup['goal'] = data['goal']
+        followup['previousPlan'] = {'id': first['planId'], 'actions': first['actions'], 'results': [{'status': 'complete'}]}
+        next_key, next_context = self.server.planner_progress.prepare(followup)
+        self.assertEqual(next_key, key)
+        self.assertEqual(next_context['serverProgress']['newVisibleOreOrigins'], [{'x': 11, 'y': 7}])
+        with patch.object(self.server.agents, 'request', side_effect=[base.events(answer=plan([], 'complete'), create=False, turn='turn_2'), io.BytesIO()]):
+            result = self.server.agents.advise(next_context, base.CONFIG, planner_key=key)
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['actions'], [])
+        self.assertEqual(self.server.stats['sessionsReused'], 1)
 
     def test_coach_and_planner_use_distinct_hosted_conversations(self):
         data = request_data()

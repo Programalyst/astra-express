@@ -83,6 +83,7 @@ namespace AstraExpress
             }
             if (command.type == "resume") { Simulation.Paused = false; FinishBot(true, "Colony resumed."); yield break; }
             if (Simulation.Paused) { FinishBot(false, "Colony is paused. Resume before taking an action."); yield break; }
+            if (command.type == "auto_explore") { yield return BotAutoExplore(); yield break; }
             if (command.type == "buy_train")
             {
                 selected = null; trainSelected = true; SetToolForFleet();
@@ -116,11 +117,29 @@ namespace AstraExpress
             {
                 var kind = command.type == "build_extractor" ? StructureKind.Extractor : command.type == "build_solar" ? StructureKind.Solar : StructureKind.PowerPlant;
                 var existing = Simulation.StructureAt(cell);
-                if (existing != null && existing.Kind == kind) { FinishBot(true, "This building already exists."); yield break; }
+                if (existing != null && existing.Kind == kind)
+                {
+                    if (kind == StructureKind.Solar) yield return BotConnectBuilding(existing, false, true);
+                    else FinishBot(true, "This building already exists.");
+                    yield break;
+                }
                 SetTool(kind == StructureKind.Extractor ? Tool.Extractor : kind == StructureKind.Solar ? Tool.Solar : Tool.PowerPlant);
                 yield return new WaitForSecondsRealtime(0.55f);
+                if (Simulation.Paused) { FinishBot(false, "Colony paused before placement. No building was placed."); yield break; }
                 bool built = Simulation.Build(kind, cell);
-                if (built) { selected = Simulation.StructureAt(cell); tool = Tool.Explore; }
+                if (built)
+                {
+                    var placed = Simulation.StructureAt(cell);
+                    selected = placed; tool = Tool.Explore;
+                    if (kind == StructureKind.Solar)
+                    {
+                        botActionMessage = "Solar placed. Connecting its south port to colony power";
+                        // Let the placed array appear before presenting its conduit preview.
+                        yield return new WaitForSecondsRealtime(0.55f);
+                        yield return BotConnectBuilding(placed, false, true);
+                        yield break;
+                    }
+                }
                 FinishBot(built, Simulation.Message); yield break;
             }
             var building = BotBuilding(cell);
@@ -135,27 +154,7 @@ namespace AstraExpress
             }
             if (command.type == "connect_conduit" || command.type == "connect_rail")
             {
-                bool rail = command.type == "connect_rail";
-                if (rail ? Simulation.RailRoute(building) != null : building.Connected) { FinishBot(true, "This connection already exists."); yield break; }
-                var route = CoachPath(building, rail);
-                if (!route.possible || route.stops.Length < 2) { FinishBot(false, route.reason); yield break; }
-                CoachGuideLink($"{(rail ? "Rail" : "Conduit")},{building.Origin.X},{building.Origin.Y}");
-                for (int i = 0; i + 1 < route.stops.Length; i++)
-                {
-                    var start = new Cell(route.stops[i].x, route.stops[i].y);
-                    var end = new Cell(route.stops[i + 1].x, route.stops[i + 1].y);
-                    if (!Simulation.CanLay(ColonySimulation.Corridor(start, end), rail, out _, out string reason)) { FinishBot(false, reason); yield break; }
-                    routeStart = null; tool = rail ? Tool.Rail : Tool.Conduit;
-                    botTarget = hover = start; PlaceNetworkAt(start);
-                    botActionMessage = $"Linking segment {i + 1} / {route.stops.Length - 1}";
-                    yield return new WaitForSecondsRealtime(0.5f);
-                    botTarget = hover = end; PlaceNetworkAt(end);
-                    if (routeStart.HasValue) { FinishBot(false, Simulation.Message); yield break; }
-                    yield return new WaitForSecondsRealtime(0.5f);
-                }
-                HideLinkGuide(); SetTool(Tool.Explore);
-                bool connected = rail ? Simulation.RailRoute(building) != null : building.Connected;
-                FinishBot(connected, connected ? (rail ? "Rails connected to the depot." : "Power connected. Flowing cyan marks the active conduit.") : Simulation.Message);
+                yield return BotConnectBuilding(building, command.type == "connect_rail");
                 yield break;
             }
             if (command.type == "dispatch_train")
@@ -170,6 +169,68 @@ namespace AstraExpress
                 FinishBot(dispatched, Simulation.Message); yield break;
             }
             FinishBot(false, "Unsupported game action.");
+        }
+
+        private IEnumerator BotConnectBuilding(Structure building, bool rail, bool finishSolar = false)
+        {
+            Simulation.Reconnect();
+            if (rail ? Simulation.RailRoute(building) != null : building.Connected)
+            {
+                FinishBot(true, finishSolar ? "Solar is power connected and supplying the colony." : "This connection already exists.");
+                yield break;
+            }
+            Cell start = Simulation.Colony.Port;
+            Cell end = building.Port;
+            string kept = finishSolar ? "Solar is placed but not power connected. " : "Connection incomplete. ";
+            if (!Simulation.TryPlanNetworkRoute(start, end, rail, false, out _, out int cost, out string reason))
+            {
+                FinishBotConnectionFailure(kept + reason + " Existing construction is kept.");
+                yield break;
+            }
+            selected = building; trainSelected = false;
+            CoachGuideLink($"{(rail ? "Rail" : "Conduit")},{building.Origin.X},{building.Origin.Y}");
+            SetTool(rail ? Tool.Rail : Tool.Conduit); verticalFirst = false;
+            botTarget = hover = start; PlaceNetworkAt(start);
+            if (!routeStart.HasValue || !routeStart.Value.Equals(start))
+            {
+                FinishBotConnectionFailure(kept + (Simulation.Paused ? "Colony is paused." : Simulation.Message));
+                yield break;
+            }
+            botTarget = hover = end;
+            botActionMessage = $"Previewing {(rail ? "rails" : "conduits")} to the south port: {cost} credits";
+            coachTimer = 1;
+            yield return new WaitForSecondsRealtime(0.9f);
+            // Recheck the same planner that the manual placement uses before it spends credits.
+            if (Simulation.Paused || !Simulation.TryPlanNetworkRoute(start, end, rail, verticalFirst, out _, out _, out reason))
+            {
+                FinishBotConnectionFailure(kept + (Simulation.Paused ? "Colony paused before connecting." : reason));
+                yield break;
+            }
+            PlaceNetworkAt(end);
+            if (routeStart.HasValue)
+            {
+                FinishBotConnectionFailure(kept + Simulation.Message);
+                yield break;
+            }
+            Simulation.Reconnect();
+            bool connected = rail ? Simulation.RailRoute(building) != null : building.Connected && Simulation.PoweredCells.Contains(building.Port);
+            HideLinkGuide(); SetTool(Tool.Explore);
+            if (!connected)
+            {
+                FinishBot(false, kept + "The colony cannot reach this port through the network. Existing construction is kept.");
+                yield break;
+            }
+            // Allow the connected network and updated solar generation to be published first.
+            botActionMessage = finishSolar ? "Solar power connected; confirming generation" : rail ? "Rails connected to the depot" : "Power connected";
+            coachTimer = 1;
+            yield return null;
+            FinishBot(true, finishSolar ? "Solar power connected. The array now adds 2 power/s to the colony." : rail ? "Rails connected to the depot." : "Power connected. Flowing cyan marks the active conduit.");
+        }
+
+        private void FinishBotConnectionFailure(string reason)
+        {
+            routeStart = null; HideLinkGuide(); SetTool(Tool.Explore);
+            FinishBot(false, reason);
         }
 
         private void DrawBotTarget()

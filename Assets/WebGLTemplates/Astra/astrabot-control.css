@@ -1,7 +1,8 @@
-#astrabot-task[hidden]{display:none!important}
-#astrabot-task{position:fixed;z-index:55;left:120px;bottom:142px;width:440px;max-width:calc(100vw - 32px);max-height:calc(100vh - 105px);overflow:auto;color:#e9f8f3;background:linear-gradient(145deg,#122e38,#11232e);border:1px solid #4a7a7a;border-radius:18px;box-shadow:0 15px 45px #03121ca6;padding:18px;font:14px/1.45 system-ui,sans-serif}
+#astrabot-task[hidden],#astrabot-task [hidden]{display:none!important}
+#astrabot-task{position:fixed;z-index:55;left:16px;bottom:calc(var(--game-scale,1) * 100px + 84px);width:330px;max-width:calc(100vw - 32px);max-height:min(55vh,500px);overflow:auto;overscroll-behavior:contain;color:#e9f8f3;background:linear-gradient(145deg,#122e38,#11232e);border:1px solid #4a7a7a;border-radius:14px;box-shadow:0 10px 30px #03121c80;padding:14px;font:14px/1.45 system-ui,sans-serif}
 #astrabot-task header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 #astrabot-task header strong{font-size:21px;color:#c5ffeb}#astrabot-task header small{margin-left:12px;letter-spacing:.16em;color:#88bcb9;font-size:10px}
+.bot-window-controls{display:flex;gap:5px}#astrabot-task .bot-window-controls button{padding:4px 9px;font-size:18px}
 #astrabot-task button{background:#234a54;color:#e2fff5;border:1px solid #527a7d;border-radius:9px;padding:9px 13px;cursor:pointer;font:600 13px system-ui,sans-serif}
 #astrabot-task button:hover{background:#32636a}#astrabot-task button:focus-visible,#astrabot-task textarea:focus-visible{outline:2px solid #ffc977;outline-offset:3px}
 #astrabot-task button:disabled{opacity:.5;cursor:wait}#astrabot-task p{font:13px/1.45 system-ui,sans-serif;color:#b8d5d6;margin:8px 0}
@@ -13,6 +14,7 @@
 #bot-actions li[data-state=active]{color:#ffd394}#bot-actions li[data-state=done]{color:#95e6bc}#bot-actions li[data-state=done]::after{content:' ✓'}#bot-actions li[data-state=failed]{color:#ffb3a2}
 #astrabot-task #bot-status{border-top:1px solid #38545f;padding-top:9px;color:#d6e5df}#astrabot-task footer{display:flex;gap:8px;margin-top:10px}
 #astrabot-task #bot-stop{background:#714137;border-color:#ad7564;color:#ffebe1}.bot-scope{display:block;margin-top:10px;font-size:10px;color:#8dafb5}
-#astrabot-task.compact{left:50%;top:82px;bottom:auto;transform:translateX(-50%);width:460px;padding:10px 15px;border-radius:12px;max-height:150px}
-#astrabot-task.compact header,#astrabot-task.compact #bot-plan-body,#astrabot-task.compact .bot-scope{display:none}#astrabot-task.compact #bot-status{border:0;padding:0;margin:0;color:#d5f2e6}#astrabot-task.compact footer{margin-top:8px}
-@media(max-width:700px){#astrabot-task{left:16px;bottom:110px;width:calc(100vw - 32px);padding:13px}#astrabot-task.compact{left:50%;width:calc(100vw - 32px)}}
+#astrabot-task.compact{left:100px;bottom:calc(var(--game-scale,1) * 100px);width:290px;padding:9px 12px;border-radius:12px;max-height:126px;overflow:hidden}
+#astrabot-task.compact header,#astrabot-task.compact #bot-editor,#astrabot-task.compact #bot-plan-body,#astrabot-task.compact .bot-scope{display:none}#astrabot-task.compact #bot-status{border:0;padding:0;margin:0;color:#d5f2e6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}#astrabot-task.compact footer{margin-top:7px}#astrabot-task.compact footer button{padding:6px 10px;font-size:12px}
+@media(max-width:700px){#astrabot-task{width:min(330px,calc(100vw - 32px));padding:12px;max-height:50vh}#astrabot-task.compact{left:90px;width:min(290px,calc(100vw - 106px));padding:9px 11px}}
+@media(max-height:560px){#astrabot-task{bottom:calc(var(--game-scale,1) * 100px + 20px);max-height:55vh}#astrabot-task.compact{bottom:calc(var(--game-scale,1) * 100px)}}

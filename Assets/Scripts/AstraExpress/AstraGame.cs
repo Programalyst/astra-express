@@ -75,7 +75,15 @@ namespace AstraExpress
         private float UiScale => Mathf.Min(Screen.width / 1280f, Screen.height / 720f);
         private float UiWidth => Screen.width / UiScale;
         private float UiHeight => Screen.height / UiScale;
-        private Rect Sidebar => new Rect(UiWidth - 294, 88, 278, 420);
+        private bool SidebarVisible => !Simulation.Paused && !pickingTile && !BuildingTool && (trainSelected || selected != null);
+        private bool ConnectionSelection => SidebarVisible && !trainSelected && selected != null && (NetworkTool || !selected.Connected);
+        private Rect Sidebar => SidebarVisible ? new Rect(UiWidth - 294, 88, 278,
+            ConnectionSelection && NetworkTool ? 174 : ConnectionSelection || (!trainSelected && selected != null && (selected.Kind == StructureKind.Solar || selected.Kind == StructureKind.Colony)) ? 210 : 380) : Rect.zero;
+        private Rect ConnectionActionRect => new Rect(Sidebar.x + 18, 252, Sidebar.width - 36, 34);
+        private bool ObjectiveVisible => !Simulation.Paused && !pickingTile && !trainSelected && selected == null && !BuildingTool && !NetworkTool && !ConnectionPanelVisible;
+        private Rect ObjectivePanel => ObjectiveVisible ? new Rect(16, 88, 350, 114) : Rect.zero;
+        private bool ContextPanelContains(Vector2 point) => SidebarVisible && Sidebar.Contains(point) || ObjectiveVisible && ObjectivePanel.Contains(point) || ConnectionPanelVisible && LinkGuidePanel.Contains(point);
+        private bool ContextPanelOverlaps(Rect rectangle) => SidebarVisible && Sidebar.Overlaps(rectangle) || ObjectiveVisible && ObjectivePanel.Overlaps(rectangle) || ConnectionPanelVisible && LinkGuidePanel.Overlaps(rectangle);
         private bool BuildingTool => tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant;
         private StructureKind BuildKind => tool == Tool.PowerPlant ? StructureKind.PowerPlant : tool == Tool.Solar ? StructureKind.Solar : StructureKind.Extractor;
 
@@ -141,6 +149,7 @@ namespace AstraExpress
 
         private void ResetWorld()
         {
+            ResetNetworkPlacement();
             ResetBotControl();
             ResetCoach();
             ResetLinkGuide();
@@ -288,6 +297,7 @@ namespace AstraExpress
             UpdateFogVisuals();
             UpdatePowerVisuals();
             UpdateLinkGuide();
+            UpdateNetworkPlacement();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
             foreach (var train in Simulation.Trains)
             {
@@ -413,7 +423,7 @@ namespace AstraExpress
         private bool OverUi(Vector2 screen)
         {
             Vector2 point = new Vector2(screen.x / UiScale, (Screen.height - screen.y) / UiScale);
-            return OverLinkGuide(point) || point.y < 72 || point.y > UiHeight - 128 || Sidebar.Contains(point) || new Rect(16, 88, 280, 165).Contains(point);
+            return OverNetworkPlacement(point) || OverLinkGuide(point) || point.y < 72 || point.y > UiHeight - 128 || ContextPanelContains(point);
         }
 
         private void HandleInput()
@@ -490,6 +500,7 @@ namespace AstraExpress
                 {
                     selected = Simulation.StructureAt(target);
                     tool = Tool.Explore;
+                    BeginBuildingConnection(selected);
                 }
             }
             else PlaceNetworkAt(target);
@@ -498,14 +509,20 @@ namespace AstraExpress
         private void PlaceNetworkAt(Cell target)
         {
             if (Simulation.Paused || (tool != Tool.Conduit && tool != Tool.Rail)) return;
+            target = NetworkEndpoint(target);
+            if (routeStart.HasValue && routeStart.Value.Equals(target)) { Simulation.Message = "Start selected. Click a different highlighted tile to connect."; return; }
             if (!routeStart.HasValue)
             {
-                if (Simulation.CanLay(new[] { target }, tool == Tool.Rail, out _, out string reason)) routeStart = target;
+                if (Simulation.CanLay(new[] { target }, tool == Tool.Rail, out _, out string reason)) { routeStart = target; Simulation.Message = "Start selected. Choose a highlighted destination; the bend adjusts around obstacles."; }
                 else Simulation.Message = reason;
             }
             else
             {
-                if (Simulation.Lay(ColonySimulation.Corridor(routeStart.Value, target, verticalFirst), tool == Tool.Rail)) routeStart = null;
+                if (Simulation.TryPlanNetworkRoute(routeStart.Value, target, tool == Tool.Rail, verticalFirst, out var path, out _, out string reason))
+                {
+                    if (Simulation.Lay(path, tool == Tool.Rail)) routeStart = null;
+                }
+                else Simulation.Message = reason;
             }
         }
 
@@ -524,15 +541,17 @@ namespace AstraExpress
         {
             preview.positionCount = 0;
             if (!hover.HasValue || Simulation.Paused) return;
-            Cell origin = hover.Value;
+            Cell origin = NetworkTool ? NetworkEndpoint(hover.Value) : hover.Value;
             int size = 1;
             bool valid = Simulation.IsRevealed(origin);
             if (BuildingTool)
                 valid = Simulation.CanBuild(BuildKind, origin, out origin, out size, out _, out _);
+            if (NetworkTool && !routeStart.HasValue)
+                valid = Simulation.CanLay(new[] { origin }, tool == Tool.Rail, out _, out _);
             if (routeStart.HasValue)
             {
-                var path = ColonySimulation.Corridor(routeStart.Value, origin, verticalFirst);
-                valid = Simulation.CanLay(path, tool == Tool.Rail, out _, out _);
+                valid = Simulation.TryPlanNetworkRoute(routeStart.Value, origin, tool == Tool.Rail, verticalFirst, out var path, out _, out _);
+                if (!valid) path = ColonySimulation.Corridor(routeStart.Value, origin, verticalFirst);
                 var points = new List<Vector3>();
                 for (int index = 0; index < path.Count; index++)
                 {
@@ -550,7 +569,7 @@ namespace AstraExpress
                 var corners = new[] { corner, corner + Vector3.right * extent, corner + new Vector3(extent, 0, extent), corner + Vector3.forward * extent, corner };
                 preview.SetPositions(corners.Select(point => Position(point.x / 2, point.z / 2, 0.3f)).ToArray());
             }
-            previewMaterial.SetColor("_BaseColor", valid ? cyan : new Color(1, 0.35f, 0.38f));
+            previewMaterial.SetColor("_BaseColor", valid ? (tool == Tool.Rail ? gold : cyan) : new Color(1, 0.35f, 0.38f));
         }
 
         private void OnApplicationFocus(bool focused)
@@ -567,9 +586,8 @@ namespace AstraExpress
             DrawWorldLabels();
             Panel(new Rect(0, 0, UiWidth, 72));
             GUI.Label(new Rect(22, 10, 300, 32), "ASTRA EXPRESS", titleStyle);
-            GUI.Label(new Rect(24, 43, 300, 20), "FRONTIER 01   /   FIRST LIGHT", smallStyle);
             GUI.Label(new Rect(365, 12, 190, 27), $"{Simulation.Credits:N0} credits", headingStyle);
-            GUI.Label(new Rect(365, 42, 200, 20), $"{Simulation.Sold} ore delivered  /  {Simulation.Deliveries} trips", smallStyle);
+            if (Simulation.Deliveries > 0) GUI.Label(new Rect(365, 42, 200, 20), $"{Simulation.Sold} ore delivered  /  {Simulation.Deliveries} trips", smallStyle);
             GUI.Label(new Rect(585, 10, 280, 26), $"SHARED BATTERY   {Simulation.Battery:0} / 100", bodyStyle);
             Fill(new Rect(585, 39, 175, 6), new Color(0.17f, 0.23f, 0.30f));
             Fill(new Rect(585, 39, 175 * Simulation.Battery / 100, 6), Simulation.Battery < 12 ? gold : cyan);
@@ -586,6 +604,7 @@ namespace AstraExpress
             DrawToolbar();
             DrawLinkGuide();
             DrawBotTarget();
+            DrawNetworkPlacement();
             if (Simulation.Paused)
             {
                 Panel(new Rect(UiWidth / 2 - 180, UiHeight / 2 - 65, 360, 122));
@@ -597,9 +616,10 @@ namespace AstraExpress
 
         private void DrawObjective()
         {
-            bool discovered = Simulation.Deposits.Any(Simulation.FullyRevealed);
-            bool built = Simulation.Structures.Any(structure => structure.Kind == StructureKind.Extractor);
-            bool powered = Simulation.Structures.Any(structure => structure.Kind == StructureKind.Extractor && structure.Connected);
+            if (!ObjectiveVisible) return;
+            bool discovered = Simulation.Deposits.Any(deposit => deposit.Resource == ResourceKind.Ore && Simulation.FullyRevealed(deposit));
+            bool built = Simulation.Structures.Any(structure => structure.Kind == StructureKind.Extractor && structure.Deposit.Resource == ResourceKind.Ore);
+            bool powered = Simulation.Structures.Any(structure => structure.Kind == StructureKind.Extractor && structure.Deposit.Resource == ResourceKind.Ore && structure.Connected);
             bool routed = Simulation.Trains.Any(train => train.Source != null);
             bool fuelFound = Simulation.Deposits.Any(deposit => deposit.Resource == ResourceKind.Fluxite && Simulation.FullyRevealed(deposit));
             int stage = Simulation.FuelConsumed > 0 ? 8 : Simulation.FuelDelivered > 0 ? 7 : Simulation.Deliveries > 0 ? fuelFound ? 6 : 5 : routed ? 4 : powered ? 3 : built ? 2 : discovered ? 1 : 0;
@@ -610,28 +630,39 @@ namespace AstraExpress
                 "Choose Conduit. Click the colony's cyan port, then the extractor's south port.",
                 "Lay rails between those same ports. Select your extractor and dispatch the train.",
                 "The train collects local ore and sells it at the colony. Only deliveries earn credits.",
-                "Keep ore earning. Explore southeast for green Fluxite. Buy a second train in Fleet.",
-                "Build a Fluxite extractor and plant. Wire both, lay rails, then assign the plant at the mine.",
+                "Keep ore deliveries running. Explore for green Fluxite to fuel a power plant.",
+                "Select a Fluxite patch to start a fuel supply line for a power plant.",
                 "Connect the plant's conduit port and resume it. Fuel burns only when the battery needs power.",
                 "Fuel now powers expansion! Find larger ore patches, upgrade mines, and keep fuel arriving." };
-            Panel(new Rect(16, 88, 280, 165));
-            GUI.Label(new Rect(32, 102, 248, 20), stage == 8 ? "FUEL ECONOMY ESTABLISHED" : stage >= 5 ? "NEXT: FUEL-POWERED FRONTIER" : $"MISSION   {stage + 1} / 5", smallStyle);
-            GUI.Label(new Rect(32, 127, 248, 48), titles[stage], headingStyle);
-            GUI.Label(new Rect(32, 176, 248, 65), descriptions[stage], bodyStyle);
+            Rect panel = ObjectivePanel;
+            Panel(panel);
+            GUI.Label(new Rect(panel.x + 14, panel.y + 10, panel.width - 28, 26), titles[stage], headingStyle);
+            GUI.Label(new Rect(panel.x + 14, panel.y + 39, panel.width - 28, 43), descriptions[stage], bodyStyle);
+            GUI.Label(new Rect(panel.x + 14, panel.y + 87, panel.width - 28, 18), Simulation.RoverMoving ? "ROVER EXPLORING  ·  V to follow" : "ROVER READY", smallStyle);
         }
 
         private void DrawSelection()
         {
+            if (!SidebarVisible) return;
             Rect panel = Sidebar;
             Panel(panel);
             float left = panel.x + 18;
             float width = panel.width - 36;
-            GUI.Label(new Rect(left, 103, width, 22), trainSelected ? "RAIL OPERATIONS" : selected != null ? "COLONY INFRASTRUCTURE" : "EXPLORATION CONTROL", smallStyle);
+            GUI.Label(new Rect(left, 103, width, 22), trainSelected ? "RAIL OPERATIONS" : ConnectionSelection ? "CONNECTION STATUS" : "SELECTED BUILDING", smallStyle);
             string title = trainSelected ? $"Locomotive {selectedTrainIndex + 1}" : selected == null ? "Rover 01" : selected.Kind == StructureKind.Colony ? "Landing colony" : selected.Kind == StructureKind.Solar ? "Solar array" : selected.Kind == StructureKind.PowerPlant ? "Fluxite power plant" : selected.Deposit.Resource == ResourceKind.Fluxite ? "Fluxite extractor" : "Ore extractor";
             titleStyle.fontSize = title.Length > 17 ? 21 : 25;
             GUI.Label(new Rect(left, 132, width, 32), title, titleStyle);
             titleStyle.fontSize = 25;
             float row = 180;
+            if (ConnectionSelection)
+            {
+                bool rail = selected.Kind != StructureKind.Solar && Simulation.RailRoute(selected) != null;
+                Stat(left, ref row, "POWER", selected.Connected ? "Connected" : "Not connected");
+                Stat(left, ref row, selected.Kind == StructureKind.Solar ? "OUTPUT" : "RAILS", selected.Kind == StructureKind.Solar ? selected.Connected ? "+2 power / second" : "Waiting for power link" : rail ? "Connected to depot" : "Not connected");
+                if (!NetworkTool && Button(ConnectionActionRect, !selected.Connected ? "Show power connection" : "Show rail connection", active: true))
+                    CoachGuideLink($"{(!selected.Connected ? "Conduit" : "Rail")},{selected.Origin.X},{selected.Origin.Y}");
+                return;
+            }
             if (trainSelected)
             {
                 if (Button(new Rect(left, row, 48, 27), "<")) selectedTrainIndex = (selectedTrainIndex + Simulation.Trains.Count - 1) % Simulation.Trains.Count;
@@ -720,18 +751,7 @@ namespace AstraExpress
                 Stat(left, ref row, "POWER", selected.Connected ? "CONNECTED" : "WIRE SOUTH PORT");
                 Stat(left, ref row, "SOUTH PORT", selected.Port.ToString());
                 Stat(left, ref row, selected.Kind == StructureKind.Solar ? "GENERATION" : "DEPOT", selected.Kind == StructureKind.Solar ? selected.Connected ? "+2 power / second" : "0 / 2 power per second" : "Ore arrives here for credits");
-                GUI.Label(new Rect(left, row + 14, width, 85), "Conduits and tracks are separate networks. They can share a corridor, but rails do not transmit power.", bodyStyle);
             }
-            else
-            {
-                Stat(left, ref row, "POSITION", Simulation.RoverCell.ToString());
-                Stat(left, ref row, "MOVEMENT", Simulation.RoverMoving ? "EXPLORING" : "AWAITING ORDERS");
-                Stat(left, ref row, "ENERGY", "2 power / surface tile");
-                Stat(left, ref row, "ELEVATION", Simulation.Terrain.Kind(Simulation.RoverCell) == TerrainKind.Ramp ? "Climbing / descending ramp" : Simulation.Terrain.Elevation(Simulation.RoverCell) == 1 ? "Upper plateau" : "Colony lowlands");
-                GUI.Label(new Rect(left, row + 16, width, 100), "Click ground to explore. Previously revealed terrain stays visible. At low power, pause mines and let solar recharge.", bodyStyle);
-            }
-            if (Button(new Rect(left, panel.yMax - 52, 112, 34), "Colony [C]")) CenterColony();
-            if (Button(new Rect(left + 122, panel.yMax - 52, width - 122, 34), "Rover [V]", followRover)) CenterRover();
         }
 
         private void SetToolForFleet() { tool = Tool.Explore; routeStart = null; HideLinkGuide(); StopFollowingRover(); }
@@ -753,16 +773,16 @@ namespace AstraExpress
             for (int index = 0; index < names.Length; index++)
                 if (ToolbarCard(new Rect(28 + index * 147, bottom + 13, 139, 44), names[index], subtitles[index], icons[index], (index + 1).ToString(), tool == (Tool)index && !trainSelected, index == 4 || index == 1 ? gold : cyan)) SetTool((Tool)index);
             if (ToolbarCard(new Rect(910, bottom + 13, 139, 44), "Fleet", "Trains / upgrades", "train", null, trainSelected, gold)) { trainSelected = true; selected = null; SetToolForFleet(); }
-            GUI.Label(new Rect(1065, bottom + 12, UiWidth - 1089, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: change route bend", smallStyle);
+            GUI.Label(new Rect(1065, bottom + 12, UiWidth - 1089, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
             Fill(new Rect(16, bottom - 38, UiWidth - 32, 30), new Color(0.045f, 0.07f, 0.12f, 0.9f));
             string message = Simulation.Message;
             if (tool == Tool.Conduit || tool == Tool.Rail)
             {
-                message = routeStart.HasValue ? "Choose the end tile. R changes bend direction. Right click cancels." : "Click the start port, then the end port. Routes can share existing tiles for free.";
+                message = routeStart.HasValue ? "Choose a highlighted tile. Bright ports join buildings; outlined tiles extend the route. Bend adjusts automatically." : "Click a glowing port or a building to choose its port. Then click the destination; valid bends are automatic.";
                 if (routeStart.HasValue && hover.HasValue)
                 {
-                    bool valid = Simulation.CanLay(ColonySimulation.Corridor(routeStart.Value, hover.Value, verticalFirst), tool == Tool.Rail, out int cost, out string reason);
-                    message = valid ? $"BUILD {tool.ToString().ToUpper()}   {cost} credits   /   Click to confirm; R changes bend; right click cancels." : reason;
+                    bool valid = Simulation.TryPlanNetworkRoute(routeStart.Value, NetworkEndpoint(hover.Value), tool == Tool.Rail, verticalFirst, out _, out int cost, out string reason);
+                    message = routeStart.Value.Equals(NetworkEndpoint(hover.Value)) ? "Start selected. Click another highlighted tile or a destination port." : valid ? $"BUILD {tool.ToString().ToUpper()}   {cost} credits   /   Click to build this path; R prefers the other bend; right-click cancels." : reason;
                 }
             }
             else if (BuildingTool && hover.HasValue)
@@ -782,8 +802,8 @@ namespace AstraExpress
             }
             foreach (var cell in ground.Keys)
                 if (Simulation.Terrain.Kind(cell) == TerrainKind.Ramp && Simulation.IsRevealed(cell)) WorldLabel(Position(cell, 0.35f), "RAMP PASS", cyan);
-            if (!LinkGuideActive || linkStops.Count < 2) WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
-            if (selected != null && selected != Simulation.Colony && (!LinkGuideActive || linkStops.Count < 2))
+            if (!NetworkTool && (!LinkGuideActive || linkStops.Count < 2)) WorldLabel(Position(Simulation.Colony.Port, 0.2f), "COLONY PORT", cyan);
+            if (!NetworkTool && selected != null && selected != Simulation.Colony && (!LinkGuideActive || linkStops.Count < 2))
                 WorldLabel(Position(selected.Port, 0.2f),
                     selected.Connected ? "POWER CONNECTED" : "CONNECT POWER HERE",
                     selected.Connected ? cyan : gold);
@@ -794,7 +814,7 @@ namespace AstraExpress
             Vector3 screen = worldCamera.WorldToScreenPoint(position);
             if (screen.z < 0) return;
             var rectangle = new Rect(screen.x / UiScale - 85, (Screen.height - screen.y) / UiScale + 8, 170, 24);
-            if (rectangle.y < 74 || rectangle.yMax > UiHeight - 130 || rectangle.Overlaps(Sidebar) || rectangle.Overlaps(new Rect(16, 88, 280, 165))) return;
+            if (rectangle.y < 74 || rectangle.yMax > UiHeight - 130 || ContextPanelOverlaps(rectangle)) return;
             Fill(rectangle, new Color(0.04f, 0.065f, 0.10f, 0.9f));
             Fill(new Rect(rectangle.x, rectangle.y, 3, rectangle.height), accent);
             GUI.Label(rectangle, caption, labelStyle);
@@ -803,6 +823,7 @@ namespace AstraExpress
         private void OnDestroy()
         {
             DisposeFogVisuals();
+            ResetNetworkPlacement();
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             foreach (var material in ownedMaterials) if (material != null) Destroy(material);
         }

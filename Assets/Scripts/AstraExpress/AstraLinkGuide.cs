@@ -16,8 +16,10 @@ namespace AstraExpress
         private int linkRevision = -1, linkReveal = -1, linkCredits = -1, linkCost, linkSegment;
         private string linkReason = "", linkSuccess = "";
         private float linkSuccessUntil;
-        private Rect LinkGuidePanel => new Rect(316, 88, UiWidth - 626, 88);
-        private bool LinkGuideActive => linkTarget != null && !linkSuppressed && !Simulation.Paused;
+        private bool ConnectionPanelVisible => !Simulation.Paused && !pickingTile && (NetworkTool || Time.unscaledTime < linkSuccessUntil);
+        private Rect LinkGuidePanel => ConnectionPanelVisible ? new Rect(16, 88, Mathf.Min(640, UiWidth - (SidebarVisible ? 326 : 32)), 82) : Rect.zero;
+        private Rect ConnectionCancelRect => new Rect(LinkGuidePanel.xMax - 110, LinkGuidePanel.y + 9, 96, 26);
+        private bool LinkGuideActive => NetworkTool && linkTarget != null && !linkSuppressed && !Simulation.Paused;
 
         private void ResetLinkGuide()
         {
@@ -99,7 +101,7 @@ namespace AstraExpress
                 if (linkGhost != null) Destroy(linkGhost.gameObject);
                 linkGhost = null;
             }
-            if (linkGhost != null) linkGhost.gameObject.SetActive(LinkGuideActive);
+            if (linkGhost != null) linkGhost.gameObject.SetActive(LinkGuideActive && !routeStart.HasValue);
             if (!LinkGuideActive) return;
             if (linkRevision == Simulation.Revision && linkReveal == Simulation.RevealRevision && linkCredits == Simulation.Credits) return;
             linkRevision = Simulation.Revision; linkReveal = Simulation.RevealRevision; linkCredits = Simulation.Credits;
@@ -118,6 +120,7 @@ namespace AstraExpress
             }
             linkGhost = new GameObject("Suggested connection · preview only").transform;
             linkGhost.SetParent(worldRoot, false);
+            linkGhost.gameObject.SetActive(!routeStart.HasValue);
             var cells = new HashSet<Cell>();
             for (int segment = linkSegment; segment + 1 < linkStops.Count; segment++)
             {
@@ -158,23 +161,7 @@ namespace AstraExpress
             line.generateLightingData = true;
         }
 
-        private bool LinkMarkerRect(Cell cell, out Rect rectangle)
-        {
-            Vector3 screen = worldCamera.WorldToScreenPoint(Position(cell, 0.3f));
-            rectangle = new Rect(screen.x / UiScale - 85, (Screen.height - screen.y) / UiScale + 8, 170, 24);
-            return screen.z > 0 && rectangle.y >= 74 && rectangle.yMax <= UiHeight - 130 &&
-                !rectangle.Overlaps(Sidebar) && !rectangle.Overlaps(new Rect(16, 88, 280, 165)) && !rectangle.Overlaps(LinkGuidePanel);
-        }
-
-        private bool OverLinkGuide(Vector2 point)
-        {
-            if (Simulation.Paused) return false;
-            if ((LinkGuideActive || Time.unscaledTime < linkSuccessUntil) && LinkGuidePanel.Contains(point)) return true;
-            if (LinkGuideActive)
-                for (int i = linkSegment; i < linkStops.Count; i++)
-                    if (LinkMarkerRect(linkStops[i], out Rect rectangle) && rectangle.Contains(point)) return true;
-            return false;
-        }
+        private bool OverLinkGuide(Vector2 point) => ConnectionPanelVisible && LinkGuidePanel.Contains(point);
 
         // Preview and camera only: neither credits nor network tiles change here.
         public void CoachGuideLink(string request)
@@ -208,57 +195,41 @@ namespace AstraExpress
 
         private void DrawLinkGuide()
         {
-            if (Simulation.Paused) return;
-            if (!LinkGuideActive)
-            {
-                if (Time.unscaledTime < linkSuccessUntil)
-                {
-                    Panel(LinkGuidePanel);
-                    GUI.Label(new Rect(LinkGuidePanel.x + 14, LinkGuidePanel.y + 17, LinkGuidePanel.width - 28, 55), linkSuccess, headingStyle);
-                }
-                return;
-            }
+            if (!ConnectionPanelVisible) return;
             Rect panel = LinkGuidePanel;
             Panel(panel);
-            Fill(new Rect(panel.x, panel.y, 3, panel.height), cyan);
-            bool possible = linkStops.Count > 1;
-            string kind = linkTool == Tool.Rail ? linkTarget.Kind == StructureKind.PowerPlant ? "PLANT RAIL" : "RAIL" : "POWER";
-            GUI.Label(new Rect(panel.x + 14, panel.y + 8, panel.width - 108, 20),
-                possible ? $"SUGGESTED {kind} LINK · {linkCost} credits · PREVIEW" : $"{kind} LINK · ROUTE BLOCKED", smallStyle);
-            if (Button(new Rect(panel.xMax - 89, panel.y + 9, 76, 25), "HIDE  X")) { HideLinkGuide(); return; }
-            string instruction = linkReason;
-            if (possible)
+            Fill(new Rect(panel.x, panel.y, 3, panel.height), tool == Tool.Rail ? gold : cyan);
+            string title = tool == Tool.Rail ? "RAIL CONNECTION" : "POWER CONNECTION";
+            string instruction;
+            if (!LinkGuideActive && Time.unscaledTime < linkSuccessUntil)
             {
-                int first = linkSegment + 1, second = first + 1;
-                if (tool != linkTool) instruction = $"Press {(linkTool == Tool.Rail ? 5 : 4)} for {linkTool}. Then click marker {first}, followed by marker {second}.";
-                else if (!routeStart.HasValue) instruction = $"Click marker {first} to start. Then click marker {second} to build the highlighted segment.";
-                else if (routeStart.Value.Equals(linkStops[linkSegment])) instruction = $"Start selected. Now click marker {second} to build this segment. Right-click cancels.";
-                else instruction = $"Your start is outside this suggestion. Right-click to cancel, then start at marker {first}.";
-                for (int i = linkSegment; i < linkStops.Count; i++)
-                {
-                    string endpoint = linkTarget.Kind == StructureKind.PowerPlant ? "PLANT PORT" : linkTarget.Kind == StructureKind.Solar ? "SOLAR PORT" : linkTarget.Deposit?.Resource == ResourceKind.Fluxite ? "FLUXITE PORT" : "EXTRACTOR PORT";
-                    string name = i == 0 ? "COLONY PORT" : i == linkStops.Count - 1 ? endpoint : "TURN HERE";
-                    bool active = i == linkSegment + (routeStart.HasValue && routeStart.Value.Equals(linkStops[linkSegment]) ? 1 : 0);
-                    if (LinkMarkerRect(linkStops[i], out Rect marker))
-                    {
-                        Fill(marker, new Color(0.04f, 0.065f, 0.10f, 0.93f));
-                        Fill(new Rect(marker.x, marker.y, 3, marker.height), active ? cyan : gold);
-                        // The label and the highlighted tile both use the same placement rules.
-                        if (GUI.Button(marker, $"{i + 1}  {name}", labelStyle))
-                        {
-                            coachInputResumeFrame = Time.frameCount + 1;
-                            if (tool != linkTool) SetTool(linkTool);
-                            PlaceNetworkAt(linkStops[i]);
-                            Event.current.Use();
-                        }
-                    }
-                }
-                float left = 28 + (int)linkTool * 147;
-                float bottom = UiHeight - 88;
-                Fill(new Rect(left, bottom + 8, 139, 3), cyan);
-                Fill(new Rect(left, bottom + 60, 139, 3), cyan);
+                title = "CONNECTION COMPLETE";
+                instruction = linkSuccess;
             }
-            GUI.Label(new Rect(panel.x + 14, panel.y + 36, panel.width - 28, 46), instruction, bodyStyle);
+            else if (routeStart.HasValue)
+            {
+                title += "  ·  START SELECTED";
+                instruction = "Click a highlighted destination port or tile. The full route bends automatically.";
+                if (hover.HasValue && !routeStart.Value.Equals(NetworkEndpoint(hover.Value)))
+                {
+                    bool valid = Simulation.TryPlanNetworkRoute(routeStart.Value, NetworkEndpoint(hover.Value), tool == Tool.Rail, verticalFirst, out _, out int cost, out string reason);
+                    title = valid ? (tool == Tool.Rail ? "RAIL" : "POWER") + $" CONNECTION  ·  {cost} credits" : "CHOOSE ANOTHER DESTINATION";
+                    instruction = valid ? "Click to build this path. R prefers the other bend; Escape cancels." : reason;
+                }
+            }
+            else
+            {
+                if (LinkGuideActive && linkStops.Count > 1) title += $"  ·  {linkCost} credits suggested";
+                instruction = LinkGuideActive && linkStops.Count < 2 ? linkReason : "Click a glowing start port, then the destination port. The full route bends automatically.";
+            }
+            GUI.Label(new Rect(panel.x + 14, panel.y + 9, panel.width - 138, 22), title, smallStyle);
+            GUI.Label(new Rect(panel.x + 14, panel.y + 34, panel.width - 28, 42), instruction, bodyStyle);
+            if (Button(ConnectionCancelRect, NetworkTool ? "Cancel" : "Done"))
+            {
+                routeStart = null;
+                SetTool(Tool.Explore);
+                HideLinkGuide();
+            }
         }
     }
 }

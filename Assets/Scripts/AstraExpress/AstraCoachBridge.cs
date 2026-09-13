@@ -67,6 +67,14 @@ namespace AstraExpress
             for (int i = 0; i < names.Length; i++) Add("tool-" + names[i], names[i], new Rect(28 + i * 147, UiHeight - 75, 139, 44));
             Add("fleet", "Fleet", new Rect(910, UiHeight - 75, 139, 44));
             Add("pause", Simulation.Paused ? "Resume" : "Pause", new Rect(UiWidth - 214, 17, 92, 36));
+            if (ConnectionPanelVisible) Add("connection-cancel", NetworkTool ? "Cancel connection" : "Dismiss connection status", ConnectionCancelRect);
+            if (!SidebarVisible || NetworkTool) return anchors.ToArray();
+            if (ConnectionSelection)
+            {
+                Add(selected.Kind == StructureKind.Extractor ? "primary-action" : selected.Kind == StructureKind.PowerPlant ? "plant-connect" : "solar-connect",
+                    !selected.Connected ? "Show power connection" : "Show rail connection", ConnectionActionRect);
+                return anchors.ToArray();
+            }
             if (trainSelected) {
                 Add("buy-train", "Buy train", new Rect(Sidebar.x + 18, 397, Sidebar.width - 36, 32));
                 Add("train-park", "Park at colony", new Rect(Sidebar.x + 18, 319, Sidebar.width - 36, 32));
@@ -85,13 +93,25 @@ namespace AstraExpress
             }
             return anchors.ToArray();
         }
+        private CoachAnchor[] CoachPanels()
+        {
+            var panels = new List<CoachAnchor>();
+            void Add(string id, Rect rect) => panels.Add(new CoachAnchor { id = id, x = rect.x / UiWidth, y = rect.y / UiHeight, width = rect.width / UiWidth, height = rect.height / UiHeight });
+            Add("header", new Rect(0, 0, UiWidth, 72));
+            if (ObjectiveVisible) Add("objective", ObjectivePanel);
+            if (SidebarVisible) Add("sidebar", Sidebar);
+            if (ConnectionPanelVisible) Add("connection", LinkGuidePanel);
+            return panels.ToArray();
+        }
         [Serializable] private sealed class CoachState
         {
             public string session, tool, message, selectedKind, trainPhase, placementReason;
             public string botActionId, botActionStatus, botActionMessage;
-            public bool botBusy, pickingTile, hasPickedTile;
+            public bool botBusy, pickingTile, hasPickedTile, smartRouting = true;
             public CoachPoint pickedTile, botTarget;
-            public CoachAnchor[] uiAnchors;
+            public CoachPoint[] connectionTargets;
+            public CoachAnchor[] uiAnchors, uiPanels;
+            public CoachRoute solarSitePowerRoute, pickedSitePowerRoute;
             public int credits, produced, sold, deliveries, capacity, capacityLevel, cargo;
             public int selectedTrainIndex, idleTrains, trainCount, maxTrains, trainCost, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
             public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy;
@@ -164,36 +184,27 @@ namespace AstraExpress
 #endif
         private CoachPoint CoachPosition(Cell cell)
         {
-            Vector3 point = worldCamera.WorldToViewportPoint(Position(cell, 0.4f));
+            Vector3 point = worldCamera.WorldToViewportPoint(Position(cell, 0.04f));
             var guiPoint = new Vector2(point.x * UiWidth, (1 - point.y) * UiHeight);
             return new CoachPoint { x = cell.X, y = cell.Y, screenX = point.x, screenY = 1 - point.y,
-                visible = point.z > 0 && point.x > 0.02f && point.x < 0.98f && guiPoint.y > 74 && guiPoint.y < UiHeight - 132 && !Sidebar.Contains(guiPoint) && !new Rect(16, 88, 280, 165).Contains(guiPoint) };
+                visible = point.z > 0 && point.x > 0.02f && point.x < 0.98f && guiPoint.y > 74 && guiPoint.y < UiHeight - 132 && !ContextPanelContains(guiPoint) };
         }
         private CoachRoute CoachPath(Structure building, bool rail)
         {
-            // Prefer a valid L, then an actual traversable path. CanLay checks cost and occupation.
-            var paths = new List<List<Cell>> {
-                ColonySimulation.Corridor(Simulation.Colony.Port, building.Port),
-                ColonySimulation.Corridor(Simulation.Colony.Port, building.Port, true)
-            };
-            var walkable = Simulation.FindPath(Simulation.Colony.Port, building.Port,
-                cell => Simulation.IsRevealed(cell) && Simulation.StructureAt(cell) == null);
-            if (walkable != null) paths.Add(walkable);
-            List<Cell> best = null;
-            int bestCost = int.MaxValue;
-            string reason = "Explore and clear a corridor between the ports.";
-            foreach (var path in paths)
-                if (Simulation.CanLay(path, rail, out int cost, out string failure))
-                {
-                    if (cost < bestCost) { best = path; bestCost = cost; }
-                }
-                else reason = failure;
-            if (best == null) return new CoachRoute { possible = false, reason = reason, stops = Array.Empty<CoachPoint>() };
+            if (!Simulation.TryPlanNetworkRoute(Simulation.Colony.Port, building.Port, rail, false, out var best, out int bestCost, out string reason))
+                return new CoachRoute { possible = false, reason = reason, stops = Array.Empty<CoachPoint>() };
             var stops = new List<Cell> { best[0] };
             for (int i = 1; i + 1 < best.Count; i++)
                 if (best[i].X - best[i - 1].X != best[i + 1].X - best[i].X || best[i].Y - best[i - 1].Y != best[i + 1].Y - best[i].Y) stops.Add(best[i]);
             if (!best[best.Count - 1].Equals(stops[stops.Count - 1])) stops.Add(best[best.Count - 1]);
             return new CoachRoute { possible = true, cost = bestCost, nextSegment = LinkSegmentIndex(stops, rail), reason = "", stops = stops.Select(CoachPosition).ToArray() };
+        }
+
+        private CoachRoute CoachSolarRoute(Cell cell)
+        {
+            bool possible = Simulation.TryPlanSolarConnection(cell, out var path, out int cost, out string reason);
+            return new CoachRoute { possible = possible, cost = cost, reason = reason,
+                stops = path == null ? Array.Empty<CoachPoint>() : new[] { CoachPosition(path[0]), CoachPosition(path[path.Count - 1]) } };
         }
 
         // Read the same destination the extractor sidebar presents. This never assigns
@@ -243,9 +254,10 @@ namespace AstraExpress
             var currentDestination = CoachFuelDestination(selected);
             var state = new CoachState {
                 session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(),
+                connectionTargets = networkPortOptions.Where(b => !routeStart.HasValue || !b.Port.Equals(routeStart.Value)).OrderBy(b => b.Starter ? 0 : 1).Select(b => CoachPosition(b.Port)).ToArray(),
                 botActionId = botActionId, botActionStatus = botActionStatus, botActionMessage = botActionMessage, botBusy = botBusy, pickingTile = pickingTile, hasPickedTile = pickedTile.HasValue,
                 pickedTile = pickedTile.HasValue ? CoachPosition(pickedTile.Value) : null,
-                botTarget = botTarget.HasValue ? CoachPosition(botTarget.Value) : null, uiAnchors = CoachAnchors(),
+                botTarget = botTarget.HasValue ? CoachPosition(botTarget.Value) : null, uiAnchors = CoachAnchors(), uiPanels = CoachPanels(),
                 credits = Simulation.Credits, battery = Simulation.Battery, generation = Simulation.Generation, demand = Simulation.Demand,
                 produced = Simulation.Produced, sold = Simulation.Sold, deliveries = Simulation.Deliveries, paused = Simulation.Paused,
                 rover = CoachPosition(Simulation.RoverCell), roverMoving = Simulation.RoverMoving,
@@ -267,7 +279,7 @@ namespace AstraExpress
             if (hover.HasValue && (tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant))
                 Simulation.CanBuild(tool == Tool.Extractor ? StructureKind.Extractor : tool == Tool.PowerPlant ? StructureKind.PowerPlant : StructureKind.Solar, hover.Value, out _, out _, out _, out state.placementReason);
             if (hover.HasValue && routeStart.HasValue)
-                Simulation.CanLay(ColonySimulation.Corridor(routeStart.Value, hover.Value, verticalFirst), tool == Tool.Rail, out _, out state.placementReason);
+                Simulation.TryPlanNetworkRoute(routeStart.Value, NetworkEndpoint(hover.Value), tool == Tool.Rail, verticalFirst, out _, out _, out state.placementReason);
             state.buildings = Simulation.Structures.Select(CoachBuildingState).ToArray();
             state.trains = Simulation.Trains.Select((train, index) => new CoachTrain {
                 index = index, phase = train.Phase.ToString(), status = TrainStatus(train), resource = train.Resource.ToString(),
@@ -313,6 +325,8 @@ namespace AstraExpress
                 if (state.plantSite == null && Simulation.CanBuild(StructureKind.PowerPlant, cell, out _, out _, out _, out _)) state.plantSite = CoachPosition(cell);
                 if (state.solarSite != null && state.plantSite != null) break;
             }
+            if (state.solarSite != null) state.solarSitePowerRoute = CoachSolarRoute(new Cell(state.solarSite.x, state.solarSite.y));
+            if (pickedTile.HasValue) state.pickedSitePowerRoute = CoachSolarRoute(pickedTile.Value);
             AstraCoachPublish(JsonUtility.ToJson(state));
 #endif
         }

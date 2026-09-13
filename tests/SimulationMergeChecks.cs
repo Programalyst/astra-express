@@ -101,6 +101,127 @@ class Review
         Reach(sim, new Cell(18, 5));
     }
 
+    static string NetworkState(ColonySimulation sim)
+    {
+        return sim.Credits + ":" + sim.Revision + ":" + sim.RevealRevision + ":" + sim.Generation + ":" + sim.Message +
+            ":C=" + string.Join(";", sim.Conduits.OrderBy(c => c.X).ThenBy(c => c.Y)) +
+            ":R=" + string.Join(";", sim.Rails.OrderBy(c => c.X).ThenBy(c => c.Y)) +
+            ":P=" + string.Join(";", sim.PoweredCells.OrderBy(c => c.X).ThenBy(c => c.Y)) +
+            ":B=" + string.Join(";", sim.Structures.Select(b => b.Origin + "=" + b.Connected));
+    }
+
+    static void NetworkPlannerChecks()
+    {
+        int before = scenarioChecks;
+        var sim = new ColonySimulation();
+        sim.Reveal(14, 11, 100);
+        var solar = Build(sim, StructureKind.Solar, new Cell(9, 11));
+        var start = sim.Colony.Port;
+        var end = solar.Port;
+        Check(!solar.Connected && sim.SolarGeneration == 2, "New solar waits for an actual conduit connection");
+        Check(!sim.CanLay(ColonySimulation.Corridor(start, end, true), false, out _, out _), "Preferred vertical bend is blocked by the colony building");
+        string snapshot = NetworkState(sim);
+        Check(sim.TryPlanNetworkRoute(start, end, false, true, out var route, out int cost, out string reason), "Planner reverses a blocked bend: " + reason);
+        Check(route.First().Equals(start) && route.Last().Equals(end) && route.SequenceEqual(ColonySimulation.Corridor(start, end, false)), "Alternate bend connects the real colony and solar ports");
+        Check(route.All(c => sim.StructureAt(c) == null) && cost == 16, "Alternate bend avoids the building and quotes eight new conduit tiles");
+        Check(NetworkState(sim) == snapshot && !solar.Connected, "Planning changes no credits, network, revision, message, or connection state");
+        int credits = sim.Credits;
+        Check(sim.Lay(route, false), "Lay the confirmed solar power plan");
+        Check(sim.Credits == credits - cost && solar.Connected && sim.SolarGeneration == 4, "Only confirmed Lay charges and brings solar online");
+        snapshot = NetworkState(sim);
+        Check(sim.TryPlanNetworkRoute(end, start, false, false, out var reused, out int reuseCost, out _), "Plan a reverse trip along existing conduits");
+        Check(reuseCost == 0 && reused.All(sim.Conduits.Contains) && NetworkState(sim) == snapshot, "Existing conduit route is free and planning stays read-only");
+        Check(sim.TryPlanNetworkRoute(start, end, true, true, out var rails, out int railCost, out _), "Plan rails on the same corridor");
+        Check(railCost == 24, "Conduits do not discount separate rails");
+        credits = sim.Credits;
+        Check(sim.Lay(rails, true) && sim.Credits == credits - railCost, "Rail placement charges only its quoted new rails");
+        Check(sim.TryPlanNetworkRoute(end, start, true, false, out var reverseRails, out railCost, out _) && railCost == 0 && reverseRails.All(sim.Rails.Contains), "Existing rails can be reused free in reverse");
+
+        // When both bends are valid, preserve the player's explicit choice.
+        var openStart = new Cell(1, 1);
+        var openEnd = new Cell(4, 4);
+        snapshot = NetworkState(sim);
+        Check(sim.TryPlanNetworkRoute(openStart, openEnd, false, false, out var horizontal, out _, out _) && horizontal.SequenceEqual(ColonySimulation.Corridor(openStart, openEnd)), "Preserve a valid horizontal-first choice");
+        Check(sim.TryPlanNetworkRoute(openStart, openEnd, false, true, out var vertical, out _, out _) && vertical.SequenceEqual(ColonySimulation.Corridor(openStart, openEnd, true)), "Preserve a valid vertical-first choice");
+        Check(NetworkState(sim) == snapshot, "Switching preview bends does not construct anything");
+
+        // Both L paths hit a hillside. A valid path must detour through a pass.
+        var low = new Cell(16, 7);
+        var high = new Cell(18, 7);
+        foreach (bool rail in new[] { false, true })
+        {
+            snapshot = NetworkState(sim);
+            Check(sim.TryPlanNetworkRoute(low, high, rail, false, out var pass, out int passCost, out _), "Find a ramp detour for " + (rail ? "rails" : "power"));
+            Check(pass.First().Equals(low) && pass.Last().Equals(high) && pass.Contains(new Cell(17, 5)) && pass.All(c => sim.IsRevealed(c) && sim.Terrain.Walkable(c) && sim.StructureAt(c) == null), "Detour uses revealed clear ground and the north pass");
+            Check(sim.CanLay(pass, rail, out int verifiedCost, out _) && verifiedCost == passCost, "Terrain preview and placement agree on validity and cost");
+            Check(NetworkState(sim) == snapshot, "Terrain detour planning does not build or charge");
+        }
+
+        // Reject invalid endpoints and unknown terrain instead of drawing a false link.
+        snapshot = NetworkState(sim);
+        Check(!sim.TryPlanNetworkRoute(start, sim.Colony.Origin, false, false, out _, out _, out _), "Reject an occupied destination instead of a port");
+        Check(!sim.TryPlanNetworkRoute(sim.Colony.Origin, end, false, false, out _, out _, out _), "Reject an occupied start tile");
+        Check(!sim.TryPlanNetworkRoute(new Cell(-1, 6), end, false, false, out _, out _, out _), "Reject an out-of-bounds endpoint");
+        Check(!sim.TryPlanNetworkRoute(start, new Cell(17, 7), true, false, out _, out _, out _), "Reject a hillside endpoint");
+        Check(NetworkState(sim) == snapshot, "Invalid endpoints leave existing links and balances intact");
+        var hidden = new ColonySimulation();
+        snapshot = NetworkState(hidden);
+        Check(!hidden.TryPlanNetworkRoute(hidden.Colony.Port, new Cell(20, 5), false, false, out _, out _, out string hiddenReason) && !string.IsNullOrWhiteSpace(hiddenReason), "Hidden destination is rejected with a reason");
+        Check(NetworkState(hidden) == snapshot, "Rejecting hidden ground does not reveal it");
+        hidden.Reveal(low.X, low.Y, 0.1f);
+        hidden.Reveal(high.X, high.Y, 0.1f);
+        snapshot = NetworkState(hidden);
+        Check(!hidden.TryPlanNetworkRoute(low, high, false, false, out _, out _, out _), "Two visible endpoints cannot route through an undiscovered pass");
+        Check(NetworkState(hidden) == snapshot, "Blocked hidden detour leaves fog and networks unchanged");
+
+        // A free reused alternate can be affordable when the preferred new bend is not.
+        var reuse = new ColonySimulation();
+        reuse.Reveal(14, 11, 100);
+        var reuseStart = new Cell(1, 1);
+        // Keep both bend options on lowland, below the northern hillside at row 15.
+        var reuseEnd = new Cell(16, 14);
+        var existing = ColonySimulation.Corridor(reuseStart, reuseEnd, true);
+        Check(reuse.Lay(existing, false), "Create existing alternate conduit route");
+        Check(reuse.BuyTrain() && reuse.BuyTrain(), "Spend budget on two locomotives for affordability fixture");
+        Build(reuse, StructureKind.Solar, new Cell(8, 4));
+        Check(!reuse.CanLay(ColonySimulation.Corridor(reuseStart, reuseEnd), false, out _, out _), "Preferred new bend exceeds the remaining credits");
+        snapshot = NetworkState(reuse);
+        Check(reuse.TryPlanNetworkRoute(reuseStart, reuseEnd, false, false, out var affordable, out int affordableCost, out _) && affordableCost == 0 && affordable.All(reuse.Conduits.Contains), "Planner selects the free existing alternate within budget");
+        Check(NetworkState(reuse) == snapshot, "Affordable route search remains read-only");
+
+        // The fallback must prefer a longer free network over a shorter new route.
+        var detourReuse = new ColonySimulation();
+        detourReuse.Reveal(14, 11, 100);
+        var southPass = ColonySimulation.Corridor(low, new Cell(16, 15))
+            .Concat(ColonySimulation.Corridor(new Cell(16, 15), new Cell(18, 15)).Skip(1))
+            .Concat(ColonySimulation.Corridor(new Cell(18, 15), high).Skip(1)).ToList();
+        Check(detourReuse.Lay(southPass, false), "Create a longer existing route through the south pass");
+        Build(detourReuse, StructureKind.PowerPlant, new Cell(14, 1));
+        Check(detourReuse.BuyTrain(), "Reserve a train while testing a tight routing budget");
+        Check(detourReuse.Lay(ColonySimulation.Corridor(new Cell(0, 0), new Cell(12, 7)), true) && detourReuse.Credits == 2, "Leave insufficient credits for the short northern detour");
+        snapshot = NetworkState(detourReuse);
+        Check(detourReuse.TryPlanNetworkRoute(low, high, false, false, out var freeDetour, out int freeDetourCost, out _) && freeDetourCost == 0 && freeDetour.Contains(new Cell(17, 15)) && freeDetour.All(detourReuse.Conduits.Contains), "Fallback selects the longer free southern network");
+        var connectionCosts = detourReuse.NetworkConnectionCosts(low, false);
+        Check(connectionCosts.TryGetValue(high, out int overlayCost) && overlayCost == freeDetourCost, "Destination overlay agrees with minimum reuse cost");
+        Check(!connectionCosts.ContainsKey(new Cell(17, 7)) && !connectionCosts.ContainsKey(detourReuse.Colony.Origin), "Destination overlay excludes hillsides and buildings");
+        Check(NetworkState(detourReuse) == snapshot, "Fallback and destination-cost search leave the colony unchanged");
+
+        var poor = new ColonySimulation();
+        poor.Reveal(14, 11, 100);
+        Build(poor, StructureKind.Solar, new Cell(1, 1));
+        Build(poor, StructureKind.Solar, new Cell(5, 1));
+        Build(poor, StructureKind.Solar, new Cell(9, 1));
+        Build(poor, StructureKind.Solar, new Cell(1, 11));
+        var waitingSolar = Build(poor, StructureKind.Solar, new Cell(9, 11));
+        Check(poor.Credits == 0 && !waitingSolar.Connected, "Empty budget fixture has disconnected solar");
+        snapshot = NetworkState(poor);
+        Check(!poor.TryPlanNetworkRoute(poor.Colony.Port, waitingSolar.Port, false, false, out _, out _, out string budgetReason) && !string.IsNullOrWhiteSpace(budgetReason), "Unaffordable route is rejected with a reason");
+        Check(NetworkState(poor) == snapshot && !waitingSolar.Connected, "Failed plan does not charge or falsely connect solar");
+        Check(!poor.Lay(ColonySimulation.Corridor(poor.Colony.Port, waitingSolar.Port), false) && poor.Credits == 0 && !waitingSolar.Connected && poor.Conduits.Count == 1, "Rejected Lay is atomic and leaves solar disconnected");
+        Check(poor.TryPlanNetworkRoute(poor.Colony.Port, poor.Colony.Port, true, false, out var samePort, out int sameCost, out _) && samePort.Count == 1 && sameCost == 0, "A valid existing port needs no new rails or credits");
+        Console.WriteLine("PASS networkPlannerScenarioAssertions=" + (scenarioChecks - before));
+    }
+
     static void Main()
     {
         var sim=new ColonySimulation(); sim.Reveal(14,11,100);
@@ -119,6 +240,7 @@ class Review
         Check(sim.BuyTrain(),"Buy third train");Check(sim.BuyTrain(),"Buy fourth train");int maxCredits=sim.Credits;Check(!sim.BuyTrain(),"Fifth train rejected");Check(sim.Trains.Count==4 && sim.Credits==maxCredits,"Fleet limit preserves money");
         TerrainChecks(sim);
         RoverStopChecks();
+        NetworkPlannerChecks();
         Console.WriteLine("PASS scenarioAssertions="+scenarioChecks+" invariantAssertions="+invariantChecks+" timeSteps="+timeSteps+" sold="+sim.Sold+" ore="+sim.AccountedOre+"/"+sim.Produced+" fuel="+sim.AccountedFuel+"/"+sim.FuelProduced+" delivered="+sim.FuelDelivered+" consumed="+sim.FuelConsumed+" battery="+sim.Battery);
     }
 }
