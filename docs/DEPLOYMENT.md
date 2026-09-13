@@ -1,5 +1,7 @@
 # OpenAI Sites deployment
 
+> **Current source after the Astra migration:** local coaching and planning require `server/coach_server.py`, hosted Agents API sessions, and `gpt-6-astra`. The published static Sites release documented below still contains the earlier direct Responses transport. Static Sites hosting cannot run the Python server or safely contain a shared API key; publishing this migration requires a separately hosted backend or a supported server-side proxy. No new Sites release has been published for this change.
+
 ## Live site
 
 Production URL: https://astra-express.leonard-lin-2003.chatgpt.site
@@ -36,7 +38,7 @@ The reported splash-screen stall was investigated in Chrome: both scripts loaded
 
 ## Packaging
 
-The Web template supports player-provided keys with direct browser-to-OpenAI Responses calls, without any game backend. Keep the prompts, planning validator, transport, and settings scripts together; the packaging script copies all referenced template scripts. Never add an API key to static files or hosting configuration. See [COACH.md](COACH.md) for browser-key risks and setup.
+The current Web template requires the same-origin Agents server. Keep the prompts, planning validator, transport, and settings scripts together; the packaging script copies all referenced template scripts but cannot package the Python service. Never add an API key to static files or hosting configuration. The currently published static release retains its historical direct Responses client until a server-side deployment architecture is added. See [COACH.md](COACH.md) for local setup and credential boundaries.
 
 The packager fingerprints referenced JavaScript/CSS and the loader using file-content hashes. It writes both `index.html` and a deterministic `play-<content-hash>.html` entry. This avoids reusing asset cache keys between releases; a fresh entry is useful when the root document remains cached, but cannot bypass delayed platform deployment propagation. `node --test tests/sites-packaging.test.cjs` checks this behavior. Preserve prior entries/assets for existing open pages.
 

@@ -41,15 +41,27 @@ def prepared_expansion(data):
 
 
 class PlanValidationTests(unittest.TestCase):
+    def test_model_router_keeps_only_pure_rover_discovery_on_mini(self):
+        mini = 'gpt-5.4-mini'; astra = 'gpt-6-astra'
+        for goal in ['Discover the map with the rover', 'Uncover fog of war', 'Automatically discover new ore', 'Survey and reveal more of the map']:
+            with self.subTest(goal=goal):
+                self.assertEqual(planner.route_planner_model({'goal': goal}, astra, mini),
+                                 {'model': mini, 'route': 'rover-exploration'})
+        for goal in ['Explore, then build an extractor', 'Discover ore and connect a conduit', 'Connect the solar panel', 'Set up a paying ore route', 'Help me']:
+            with self.subTest(goal=goal):
+                self.assertEqual(planner.route_planner_model({'goal': goal}, astra, mini),
+                                 {'model': astra, 'route': 'advanced-visual'})
+
     def test_payload_keeps_selected_tile_and_bounded_progress(self):
         data = request_data(); planner.validate_plan_payload(data)
-        request = planner.build_planner_request(data, 'gpt-5.4-mini', 'Game facts.')
+        request = planner.build_planner_request(data, 'gpt-6-astra', 'Game facts.')
         content = request['input'][0]['content']
         self.assertEqual(content[1]['image_url'], data['image'])
         self.assertEqual(json.loads(content[0]['text'])['selectedTile'], data['selectedTile'])
         self.assertEqual(request['environment'], {'type': 'none'})
         self.assertEqual(request['agent']['tools'], [])
-        self.assertEqual(request['agent']['model'], 'gpt-5.4-mini')
+        self.assertEqual(request['agent']['model'], 'gpt-6-astra')
+        self.assertEqual(request['agent']['reasoning'], {'effort': 'low'})
         for change in [{'goal': ''}, {'goal': 'g' * 601}, {'selectedTile': {'x': 32, 'y': 1}}, {'previousPlan': {'results': [{}] * 61}}]:
             with self.assertRaises(ValueError): planner.validate_plan_payload({**data, **change})
 
@@ -372,6 +384,7 @@ class PlannerHTTPTests(unittest.TestCase):
         _, body = self.request('/api/astrabot/config')
         self.assertTrue(json.loads(body)['plannerAvailable'])
         self.assertEqual(json.loads(body)['engine'], 'agents-api')
+        self.assertEqual(json.loads(body)['routing'], {'roverExploration':'gpt-5.4-mini', 'advancedVisual':'gpt-6-astra'})
 
     def test_plan_uses_real_hosted_transport_and_returns_visible_validated_actions(self):
         (self.project / 'server/.env').write_text('OPENAI_API_KEY=private-test-value\n')
@@ -383,9 +396,27 @@ class PlannerHTTPTests(unittest.TestCase):
         self.assertEqual(result['actions'], proposed['actions'])
         self.assertTrue(result['planId'])
         self.assertEqual(upstream.call_args.args[1], '/sessions')
+        self.assertEqual(upstream.call_args.args[2]['agent']['model'], 'gpt-6-astra')
         self.assertEqual(upstream.call_args.args[2]['metadata']['purpose'], 'astrabot-game-planning')
+        self.assertEqual(result['model'], 'gpt-6-astra')
+        self.assertEqual(result['modelRoute'], 'advanced-visual')
+        self.assertEqual(self.server.stats['routedAstraPlans'], 1)
         self.assertEqual(self.server.stats['plansCompleted'], 1)
         self.assertEqual(self.request('/api/astrabot/plan', request_data(), {'X-Astra-Coach': self.server.token})[0], 429)
+
+    def test_pure_rover_discovery_is_routed_to_mini_and_reported(self):
+        (self.project / 'server/.env').write_text('OPENAI_API_KEY=private-test-value\n')
+        data = request_data(); data['goal'] = 'Uncover fog of war with the rover and discover new ore'
+        proposed = plan([action('auto_explore')])
+        with patch.object(self.server.agents, 'request', return_value=base.events(answer=proposed)) as upstream:
+            code, body = self.request('/api/astrabot/plan', data, {'X-Astra-Coach': self.server.token})
+        self.assertEqual(code, 200)
+        result = json.loads(body)
+        self.assertEqual(upstream.call_args.args[2]['agent']['model'], 'gpt-5.4-mini')
+        self.assertEqual(result['model'], 'gpt-5.4-mini')
+        self.assertEqual(result['modelRoute'], 'rover-exploration')
+        self.assertEqual(self.server.stats['routedExplorationPlans'], 1)
+        self.assertEqual(self.server.stats['lastPlanTiming']['route'], 'rover-exploration')
 
     def test_planner_validation_failure_starts_no_actions_and_hides_upstream_text(self):
         (self.project / 'server/.env').write_text('OPENAI_API_KEY=private-test-value\n')
