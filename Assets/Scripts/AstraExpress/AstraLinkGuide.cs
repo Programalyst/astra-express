@@ -67,18 +67,18 @@ namespace AstraExpress
                 if (building.Kind == StructureKind.PowerPlant) return building.Paused ? "POWER LINKED · Resume this plant after Fluxite arrives." : "POWER LINKED · Delivered Fluxite can fuel this plant when the battery needs power.";
                 return building.Paused ? "POWER LINKED · Resume this extractor to start mining." : "POWER LINKED · Rails and an assigned train carry the mined resource.";
             }
-            if (building.Kind == StructureKind.PowerPlant) return "PLANT RAIL LINKED · Select a Fluxite extractor and choose this plant as its destination.";
+            if (building.Kind == StructureKind.PowerPlant) return "PLANT RAIL LINKED · Idle trains automatically serve rail-connected Fluxite extractors.";
+            if (Simulation.Trains.Any(train => train.Source == building)) return "RAIL LINKED · Train service assigned. Deliveries run automatically.";
             if (building.Deposit?.Resource == ResourceKind.Fluxite)
             {
                 var destination = CoachFuelDestination(building);
-                if (destination == null) return "RAIL LINKED · Build a power plant, then choose it for Fluxite deliveries.";
+                if (destination == null) return "RAIL LINKED · Build and rail-connect a power plant for automatic Fluxite deliveries.";
                 if (!destination.Connected) return "RAIL LINKED · Connect the selected plant's power port next.";
                 if (Simulation.RailRoute(destination) == null) return "RAIL LINKED · Connect the selected plant to the same rail network.";
             }
-            if (Simulation.Trains.Any(train => train.Source == building)) return "RAIL LINKED · This extractor already has an assigned train.";
             return Simulation.Trains.Any(train => train.Phase == TrainPhase.Parked)
-                ? "RAIL LINKED · Select this extractor and choose Dispatch idle train."
-                : "RAIL LINKED · Open Fleet to buy a locomotive or park an existing service.";
+                ? "RAIL LINKED · A manually stopped service can be restarted from the extractor panel."
+                : "RAIL LINKED · Buy a locomotive in Fleet; it will dispatch to a ready route automatically.";
         }
 
         private void UpdateLinkGuide()

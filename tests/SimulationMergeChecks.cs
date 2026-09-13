@@ -74,7 +74,7 @@ class Review
         Check(route != null && route.Contains(new Cell(17, 5)), "Plateau connection uses north ramp");
         Check(economy.Lay(route, false) && plateau.Connected, "Conduit powers plateau mine across ramp");
         Check(economy.Lay(route, true) && economy.RailRoute(plateau) != null, "Rail reaches plateau mine across ramp");
-        Check(economy.Dispatch(plateau), "Dispatch plateau ore service");
+        Check(economy.Trains.Any(train => train.Source == plateau), "Plateau rail connection automatically dispatches ore service");
         var train = economy.Trains.First(t => t.Source == plateau);
         int sold = economy.Sold;
         Advance(economy, 120);
@@ -227,14 +227,62 @@ class Review
         Console.WriteLine("PASS networkPlannerScenarioAssertions=" + (scenarioChecks - before));
     }
 
+    static void AutoDispatchChecks()
+    {
+        var sim = new ColonySimulation();
+        sim.Reveal(16, 16, 100);
+        var ore = Build(sim, StructureKind.Extractor, new Cell(11, 7));
+        Check(sim.Lay(new[] { ore.Port }, true), "Lay disconnected extractor rail stub");
+        Check(sim.Train.Phase == TrainPhase.Parked, "Disconnected track does not dispatch");
+        Link(sim, ore, true);
+        Check(sim.Train.Source == ore && sim.Train.Destination == sim.Colony, "Completing rails starts the starter train without manual dispatch");
+        Check(!ore.Connected, "Rail-first assignment does not require power wiring first");
+        Check(sim.Trains.Count == 1, "Automatic assignment never buys a train");
+        var assigned = sim.Train;
+        Check(sim.Lay(new[] { ore.Port }, true), "Relaying existing track succeeds");
+        Check(sim.Trains.Count(train => train.Source == ore) == 1 && sim.Train == assigned, "Repeated connection events do not duplicate services");
+        Link(sim, ore, false);
+        Advance(sim, 180);
+        Check(sim.Sold > 0, "Automatically dispatched service earns credits");
+        var secondOre = Build(sim, StructureKind.Extractor, new Cell(8, 13));
+        Link(sim, secondOre, true);
+        Check(sim.Train.Source == ore && !sim.Trains.Any(train => train.Source == secondOre), "Busy train is not stolen for a new route");
+        Check(sim.Message.Contains("Fleet"), "No-idle-train message points to Fleet");
+        Check(sim.BuyTrain(), "Buy train for waiting ready route");
+        Check(sim.Trains[1].Source == secondOre, "Purchased train automatically serves waiting extractor");
+        sim.ParkTrain(assigned);
+        Advance(sim, 120);
+        Check(assigned.Phase == TrainPhase.Parked && assigned.Source == null, "Manual parking finishes and returns to depot");
+        Check(sim.Lay(new[] { ore.Port }, true), "Connection event after manual parking");
+        Check(!sim.Trains.Any(train => train.Source == ore), "Connection changes do not restart manually stopped service");
+        Check(sim.Dispatch(ore), "Manually stopped service can be explicitly restarted");
+
+        var fuelSim = new ColonySimulation();
+        fuelSim.Reveal(16, 16, 100);
+        var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 3));
+        Link(fuelSim, fuel, true);
+        Check(fuelSim.Train.Phase == TrainPhase.Parked, "Fluxite waits for a reachable plant rather than going to colony");
+        var plant = Build(fuelSim, StructureKind.PowerPlant, new Cell(14, 5));
+        Check(fuelSim.Train.Phase == TrainPhase.Parked, "Unconnected plant does not start fuel service");
+        Link(fuelSim, plant, true);
+        Check(fuelSim.Train.Source == fuel && fuelSim.Train.Destination == plant, "Connecting plant last automatically starts Fluxite delivery");
+        Check(fuelSim.Train.Resource == ResourceKind.Fluxite, "Automatic fuel service carries the right resource");
+
+        var prewired = new ColonySimulation();
+        prewired.Reveal(16, 16, 100);
+        Check(prewired.Lay(prewired.FindPath(prewired.Colony.Port, new Cell(11, 6), cell => prewired.StructureAt(cell) == null), true), "Lay rails before extractor construction");
+        var prewiredOre = Build(prewired, StructureKind.Extractor, new Cell(11, 7));
+        Check(prewired.Train.Source == prewiredOre, "Building on a preconnected port starts service");
+    }
+
     static void Main()
     {
         var sim=new ColonySimulation(); sim.Reveal(14,11,100);
-        var ore=Build(sim,StructureKind.Extractor,new Cell(11,7)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Dispatch(ore),"Ore dispatch");
+        var ore=Build(sim,StructureKind.Extractor,new Cell(11,7)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");
         Check(sim.BuyTrain(),"Buy second train");var second=sim.Trains[1];Check(sim.UpgradeTrain(second),"Upgrade selected second");Check(second.Capacity==8 && sim.Train.Capacity==4,"Only selected second upgraded");
         var fuel=Build(sim,StructureKind.Extractor,new Cell(13,3));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
-        plant.Paused=true;Check(sim.Dispatch(fuel,plant),"Fuel dispatch");int soldBefore=sim.Sold,creditsBefore=sim.Credits;Advance(sim,300);
+        plant.Paused=true;Check(second.Source==fuel && second.Destination==plant,"Automatic fuel dispatch");int soldBefore=sim.Sold,creditsBefore=sim.Credits;Advance(sim,300);
         Check(sim.Sold>soldBefore,"Ore continues while fuel service runs");Check(sim.Credits-creditsBefore==(sim.Sold-soldBefore)*8,"Only ore credits awarded");Check(sim.FuelDelivered>0,"Fluxite delivery");Check(sim.FuelConsumed==0,"Paused plant does not burn");Check(plant.Stock==plant.Storage,"Plant fills to capacity");
         Check(second.Cargo>0 && second.Phase==TrainPhase.Unloading,"Full plant retains waiting fuel cargo");int retained=second.Cargo;sim.ParkTrain(second);Advance(sim,30);Check(second.Cargo==retained,"Park request retains blocked cargo");Check(second.Phase==TrainPhase.Unloading && second.ParkRequested,"Park waits for safe cargo delivery");Check(sim.Train.Source==ore && !sim.Train.ParkRequested,"Other train not parked");
         Check(sim.UpgradeExtractor(ore),"Upgrade ore");Check(sim.UpgradeExtractor(ore),"Upgrade ore again");plant.Paused=false;Advance(sim,300);Check(sim.FuelConsumed>0,"Plant burns under demand");Advance(sim,1000); Check(second.Phase==TrainPhase.Parked && second.Cargo==0 && second.Source==null && second.Destination==null,"Fuel train completes delivery before parking");Check(sim.Train.Source==ore,"Ore service preserved");
@@ -246,6 +294,7 @@ class Review
         TerrainChecks(sim);
         RoverStopChecks();
         NetworkPlannerChecks();
+        AutoDispatchChecks();
         Console.WriteLine("PASS scenarioAssertions="+scenarioChecks+" invariantAssertions="+invariantChecks+" timeSteps="+timeSteps+" sold="+sim.Sold+" ore="+sim.AccountedOre+"/"+sim.Produced+" fuel="+sim.AccountedFuel+"/"+sim.FuelProduced+" delivered="+sim.FuelDelivered+" consumed="+sim.FuelConsumed+" battery="+sim.Battery);
     }
 }

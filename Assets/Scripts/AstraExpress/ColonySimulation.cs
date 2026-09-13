@@ -116,6 +116,7 @@ namespace AstraExpress
         public int AccountedOre => Structures.Where(structure => structure.Deposit?.Resource == ResourceKind.Ore).Sum(structure => structure.Stock) + Trains.Where(train => train.Resource == ResourceKind.Ore).Sum(train => train.Cargo) + Sold;
         public int AccountedFuel => Structures.Where(structure => structure.Kind == StructureKind.PowerPlant || structure.Deposit?.Resource == ResourceKind.Fluxite).Sum(structure => structure.Stock) + Trains.Where(train => train.Resource == ResourceKind.Fluxite).Sum(train => train.Cargo) + FuelConsumed;
         private List<Cell> roverRoute = new List<Cell>();
+        private readonly HashSet<Structure> manuallyStoppedServices = new HashSet<Structure>();
         private int roverWaypoint;
 
         public ColonySimulation()
@@ -233,7 +234,8 @@ namespace AstraExpress
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port, then assign a Fluxite delivery service." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built. Connect its south port with conduits, then lay a railway to its destination.";
+            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; an idle train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built. Connect power and rails; an idle train dispatches automatically when its route is complete.";
+            if (kind == StructureKind.Extractor || kind == StructureKind.PowerPlant) AutoDispatchReadyServices();
             return true;
         }
 
@@ -360,7 +362,8 @@ namespace AstraExpress
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = rail ? $"Railway built for {cost} credits. Select an extractor and dispatch the train." : $"Conduits built for {cost} credits. Cyan lines connect the shared power grid.";
+            Message = rail ? $"Railway built for {cost} credits." : $"Conduits built for {cost} credits. Cyan lines connect the shared power grid.";
+            AutoDispatchReadyServices();
             return true;
         }
 
@@ -386,6 +389,31 @@ namespace AstraExpress
 
         public List<Cell> RailRoute(Structure extractor) => FindPath(Colony.Port, extractor.Port, cell => Rails.Contains(cell));
 
+        private void AutoDispatchReadyServices()
+        {
+            int started = 0;
+            bool waitingForTrain = false;
+            bool waitingForPlant = false;
+            string previousMessage = Message;
+            foreach (var extractor in Structures)
+            {
+                if (extractor.Kind != StructureKind.Extractor || manuallyStoppedServices.Contains(extractor)
+                    || Trains.Any(train => train.Source == extractor) || RailRoute(extractor) == null) continue;
+                var destination = extractor.Deposit.Resource == ResourceKind.Ore ? Colony : Structures
+                    .Where(plant => plant.Kind == StructureKind.PowerPlant && RailRoute(plant) != null)
+                    .OrderByDescending(plant => plant.Connected)
+                    .ThenBy(plant => Math.Abs(plant.Port.X - extractor.Port.X) + Math.Abs(plant.Port.Y - extractor.Port.Y))
+                    .FirstOrDefault();
+                if (destination == null) { waitingForPlant = true; continue; }
+                if (!Trains.Any(train => train.Phase == TrainPhase.Parked)) { waitingForTrain = true; continue; }
+                if (Dispatch(extractor, destination)) started++;
+            }
+            Message = previousMessage;
+            if (started > 0) Message += $" {started} train service(s) dispatched automatically.";
+            if (waitingForTrain) Message += " No idle train for another ready route. Buy a train in Fleet for automatic assignment.";
+            if (waitingForPlant) Message += " Fluxite awaits a rail-connected power plant.";
+        }
+
         public bool Dispatch(Structure extractor, Structure destination = null)
         {
             if (extractor == null || extractor.Kind != StructureKind.Extractor) return Fail("Select an extractor first.");
@@ -403,6 +431,7 @@ namespace AstraExpress
             available.Resource = extractor.Deposit.Resource;
             available.Route = deliveryRoute;
             available.ParkRequested = false;
+            manuallyStoppedServices.Remove(extractor);
             BeginLeg(available, false);
             available.Leg = route;
             Message = available.Resource == ResourceKind.Ore ? "Ore service started. Each delivery earns credits at the colony." : "Fluxite service started. Fuel goes to the plant, not the ore buyer.";
@@ -416,7 +445,8 @@ namespace AstraExpress
             Credits -= TrainCost;
             Trains.Add(new FreightTrain { X = Colony.Port.X, Y = Colony.Port.Y });
             Revision++;
-            Message = "Locomotive purchased. Select an unassigned extractor to start another service.";
+            Message = "Locomotive purchased. Ready routes are assigned automatically.";
+            AutoDispatchReadyServices();
             return true;
         }
 
@@ -424,6 +454,7 @@ namespace AstraExpress
         {
             train = train ?? Train;
             if (train.Phase == TrainPhase.Parked) return;
+            if (train.Source != null) manuallyStoppedServices.Add(train.Source);
             train.ParkRequested = true;
             if (train.Phase == TrainPhase.Loading) ReturnToDepot(train);
             Message = "Train will finish any cargo delivery and return to the colony. Full plants must make room before fuel unloads.";

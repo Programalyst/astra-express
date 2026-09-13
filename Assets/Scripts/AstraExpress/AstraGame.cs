@@ -648,7 +648,7 @@ namespace AstraExpress
                 "Click ground east of the colony. Your rover reveals ore hidden by the fog.",
                 "Choose Extractor, then click the orange ore patch. Keep its south port clear.",
                 "Choose Conduit. Click the colony's cyan port, then the extractor's south port.",
-                "Lay rails between those same ports. Select your extractor and dispatch the train.",
+                "Lay rails between those same ports. An idle train dispatches automatically when the route is complete.",
                 "The train collects local ore and sells it at the colony. Only deliveries earn credits.",
                 "Keep ore deliveries running. Explore for green Fluxite to fuel a power plant.",
                 "Select a Fluxite patch to start a fuel supply line for a power plant.",
