@@ -50,14 +50,14 @@ copyFileSync(join(build, config.framework), join(destination, config.framework))
 const versionedAssets = new Map();
 function versionAsset(filename, source) {
   const bytes = readFileSync(source);
-  const versioned = filename.replace(/\.(js|css)$/, `.${hash(bytes).slice(0, 16)}.$1`);
+  const versioned = filename.replace(/\.(js|css|jpg)$/, `.${hash(bytes).slice(0, 16)}.$1`);
   writeFileSync(join(destination, versioned), bytes);
   versionedAssets.set(filename, versioned);
   return versioned;
 }
 const boot = versionAsset("boot.js", join(repository, "scripts", "sites-loader.js"));
-for (const match of html.matchAll(/(?:src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"/g)) {
-  versionAsset(match[1], join(build, match[1]));
+for (const match of html.matchAll(/(?:src|href)="([A-Za-z0-9_.-]+\.(?:js|css|jpg))"/g)) {
+  if (!versionedAssets.has(match[1])) versionAsset(match[1], join(build, match[1]));
 }
 if (existsSync(join(build, "icons"))) {
   mkdirSync(join(destination, "icons"), { recursive: true });
@@ -68,7 +68,7 @@ if (existsSync(join(build, "icons"))) {
 const scripts = `<script id="build-config" type="application/json">${JSON.stringify(config).replaceAll("<", "\\u003c")}</script>\n  <script src="${boot}"></script>`;
 const replaced = html.replace(/<script>[\s\S]*?<\/script>/, scripts);
 if (replaced === html) throw new Error("Cannot find the original Unity loader script.");
-const page = replaced.replace(/(src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"/g, (match, attribute, filename) => `${attribute}="${versionedAssets.get(filename) ?? filename}"`);
+const page = replaced.replace(/(src|href)="([A-Za-z0-9_.-]+\.(?:js|css|jpg))"/g, (match, attribute, filename) => `${attribute}="${versionedAssets.get(filename) ?? filename}"`);
 writeFileSync(join(destination, "index.html"), page);
 const releasePage = `play-${hash(Buffer.from(page)).slice(0, 16)}.html`;
 writeFileSync(join(destination, releasePage), page);

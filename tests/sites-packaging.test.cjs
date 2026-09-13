@@ -7,7 +7,7 @@ const {execFileSync} = require('node:child_process');
 const {createHash} = require('node:crypto');
 const {gunzipSync} = require('node:zlib');
 
-test('Sites packaging fingerprints scripts/styles and emits a matching release entry', () => {
+test('Sites packaging fingerprints scripts/styles/loading art and emits a matching release entry', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'astra-sites-test-'));
   try {
     const scripts = path.join(root, 'scripts'), build = path.join(root, 'Builds/Web');
@@ -17,8 +17,9 @@ test('Sites packaging fingerprints scripts/styles and emits a matching release e
     fs.writeFileSync(path.join(scripts, 'sites-loader.js'), 'window.bootReady = true;');
     fs.writeFileSync(path.join(build, 'client.js'), 'window.direct = true;');
     fs.writeFileSync(path.join(build, 'style.css'), 'body { color: white; }');
+    fs.writeFileSync(path.join(build, 'loading-background.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
     for (const filename of ['game.data','game.wasm','game.framework.js','game.loader.js']) fs.writeFileSync(path.join(build, 'Build', filename), filename.repeat(50));
-    fs.writeFileSync(path.join(build, 'index.html'), `<link href="style.css"><script src="client.js"></script><script>
+    fs.writeFileSync(path.join(build, 'index.html'), `<link href="style.css"><link rel="preload" as="image" href="loading-background.jpg"><img src="loading-background.jpg" alt=""><script src="client.js"></script><script>
 loader.src = assetUrl("Build/game.loader.js");
 const config = { dataUrl: assetUrl("Build/game.data"), codeUrl: assetUrl("Build/game.wasm"), frameworkUrl: assetUrl("Build/game.framework.js"), companyName: "Astra", productName: "Express", productVersion: "1" };
 </script>`);
@@ -27,7 +28,7 @@ const config = { dataUrl: assetUrl("Build/game.data"), codeUrl: assetUrl("Build/
     const entry = first.match(/Fresh release entry: (\S+)/)[1];
     assert.equal(fs.readFileSync(path.join(output, entry), 'utf8'), html);
     for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
-      assert.match(match[1], /\.[a-f0-9]{16}\.(js|css)$/);
+      assert.match(match[1], /\.[a-f0-9]{16}\.(js|css|jpg)$/);
       const bytes = fs.readFileSync(path.join(output, match[1]));
       assert.ok(match[1].includes(createHash('sha256').update(bytes).digest('hex').slice(0,16)));
     }
@@ -44,5 +45,14 @@ const config = { dataUrl: assetUrl("Build/game.data"), codeUrl: assetUrl("Build/
     assert.notEqual(next.match(/Fresh release entry: (\S+)/)[1], entry);
     assert.notEqual(changed.match(/src="(client[^"]+)/)[1], html.match(/src="(client[^"]+)/)[1]);
     assert.equal(changed.match(/href="([^"]+)/)[1], html.match(/href="([^"]+)/)[1]);
+    const imageName = html.match(/src="(loading-background[^"]+)/)[1];
+    assert.ok(html.includes(`href="${imageName}"`));
+    assert.equal(fs.readFileSync(path.join(output, imageName)).equals(fs.readFileSync(path.join(build, 'loading-background.jpg'))), true);
+    fs.writeFileSync(path.join(build, 'loading-background.jpg'), Buffer.from([0xff, 0xd8, 0x01, 0xff, 0xd9]));
+    const imageRelease = run(), imageChanged = fs.readFileSync(path.join(output, 'index.html'), 'utf8');
+    assert.notEqual(imageRelease.match(/Fresh release entry: (\S+)/)[1], next.match(/Fresh release entry: (\S+)/)[1]);
+    const updatedImage = imageChanged.match(/src="(loading-background[^"]+)/)[1];
+    assert.notEqual(updatedImage, imageName);
+    assert.ok(imageChanged.includes(`href="${updatedImage}"`));
   } finally { fs.rmSync(root, {recursive:true, force:true}); }
 });

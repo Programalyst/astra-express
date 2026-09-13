@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Astra Express — First Light</title>
+  <link rel="preload" as="image" href="loading-background.jpg" fetchpriority="high">
   <link rel="stylesheet" href="coach.css">
   <link rel="stylesheet" href="astrabot-control.css">
   <link rel="stylesheet" href="astrabot-settings.css">
@@ -11,17 +12,26 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0e1421; color: #e8effa; font-family: system-ui, sans-serif; }
     #unity-canvas { width: 100%; height: 100%; display: block; outline: none; }
-    #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 18px; text-align: center; background: radial-gradient(ellipse at center, #263348, #0e1421 70%); }
-    .eyebrow { color: #62dcd5; letter-spacing: .3em; font-size: 12px; }
-    h1 { font-size: clamp(32px, 5vw, 64px); letter-spacing: .05em; margin: 0; }
-    p { color: #adbacd; font-size: 15px; }
-    progress { width: 300px; height: 7px; margin: auto; accent-color: #62dcd5; }
-    #error { position: absolute; inset: 20%; padding: 30px; background: #262231; white-space: pre-wrap; display: none; }
+    #loading { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 24px; padding: clamp(24px, 5vh, 56px) 20px max(24px, env(safe-area-inset-bottom)); text-align: center; background: #211914; isolation: isolate; }
+    .loading-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; z-index: -2; }
+    #loading::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(12, 18, 28, .68), rgba(12, 18, 28, .08) 30%, transparent 55%, rgba(12, 18, 28, .88)); }
+    #loading .eyebrow { color: #8df5ec; letter-spacing: .3em; font-size: 12px; text-shadow: 0 2px 8px #000; }
+    #loading h1 { font-size: clamp(32px, 5vw, 64px); letter-spacing: .05em; margin: 8px 0 0; text-shadow: 0 3px 20px rgba(0, 0, 0, .65); }
+    #loading p { color: #e0e8f1; font-size: 15px; line-height: 1.5; margin: 12px 0 0; text-shadow: 0 2px 8px #000; }
+    .loading-footer { width: min(620px, 100%); margin: 0 auto; }
+    #progress { display: block; width: min(360px, 100%); height: 8px; margin: 0 auto; accent-color: #62dcd5; }
+    #load-status { min-height: 3em; }
+    #error { position: absolute; z-index: 10; inset: 20%; padding: 30px; background: #262231; white-space: pre-wrap; display: none; overflow: auto; }
+    @media (max-height: 480px) { #loading { padding: 16px 20px; gap: 12px; } #loading h1 { font-size: 32px; } #loading .loading-tagline { display: none; } }
   </style>
 </head>
 <body>
   <canvas id="unity-canvas" width="1280" height="720" tabindex="0" aria-label="Astra Express game. Click to explore; keys 1 through 6 select construction tools; Space pauses; WASD pans; C centres colony."></canvas>
-  <div id="loading"><div class="eyebrow">FRONTIER 01 / FIRST LIGHT</div><h1>ASTRA EXPRESS</h1><p>Explore the unknown. Power your colony. Build a railway.</p><progress id="progress" max="1" value="0"></progress><p id="load-status">Preparing your landing site…</p></div>
+  <div id="loading" aria-label="Loading Astra Express">
+    <img class="loading-art" src="loading-background.jpg" alt="" fetchpriority="high" decoding="async">
+    <div class="loading-title"><div class="eyebrow">FRONTIER 01 / FIRST LIGHT</div><h1>ASTRA EXPRESS</h1><p class="loading-tagline">Explore the unknown. Power your colony. Build a railway.</p></div>
+    <div class="loading-footer"><progress id="progress" max="1" value="0" aria-label="Game loading progress"></progress><p id="load-status" role="status">Preparing your landing site…</p></div>
+  </div>
   <div id="error" role="alert"></div>
   <script src="astrabot-contract.js"></script>
   <script src="astrabot-planning.js"></script>

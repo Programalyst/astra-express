@@ -2,6 +2,8 @@
 
 **Explore a Martian frontier. Build a railway economy. Teach your colony what to do next—in plain language.**
 
+![Astra Express splash art: a rover, glowing crystal deposits, and a freight train serving a Martian colony.](Assets/WebGLTemplates/Astra/loading-background.jpg)
+
 [Play Astra Express](https://astra-express.leonard-lin-2003.chatgpt.site/) · [Game design](docs/GAME_DESIGN.md) · [Copilot guide](docs/COACH.md) · [Agent architecture](docs/AGENTS-INTEGRATION.md)
 
 Astra Express is a Unity Web colony-and-logistics game inspired by **Transport Tycoon** and **Lucky Space**, built by two teammates collaborating with **Astra (GPT-6)**. Drive a rover into the fog of war, discover infinite mineral deposits, power extractors, and connect railway services to turn resources into an expanding colony.
