@@ -161,7 +161,7 @@
         ["Keep a working train running if you have a producing mine.", "If the starting budget was spent before a paying route could be built, use Restart. This build has no refunds."], blocked.origin)];
       if (blocked) return [tip(`mine-blocked-${blocked.origin.x}-${blocked.origin.y}`, "Clear the way for an extractor", blocked.reason,
         blocked.reason.includes("occupied") ? ["Press 1 and move the rover away from the ore patch.", "Try Extractor again when the footprint is clear."] : ["Check the placement message above the toolbar.", "Explore the patch and its south port; an extractor needs the full footprint."], blocked.origin)];
-      if (s.roverMoving) return [tip("exploring", "Your rover is opening the frontier", "The rover reveals nearby ground as it travels. Let it reach the edge of the fog.", ["Watch for an orange ore patch to appear.", "Press V any time to centre the rover."], s.rover)];
+      if (s.roverMoving) return [tip("exploring", "Your rover is opening the frontier", "The rover reveals nearby ground as it travels. Let it reach the edge of the fog.", ["Watch for an ore patch to appear.", "Press V any time to centre the rover."], s.rover)];
       return [tip("explore", "Let's find your first ore patch", "I'm AstraBot, your colony copilot. Start with a short trip to the edge of the explored ground.",
         ["Press 1 for Explore.", "Click clear ground near the edge of the fog to move the rover.", "Orange ore appears when the rover gets close enough."], s.frontier)];
     }

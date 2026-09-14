@@ -22,6 +22,7 @@ This revision replaces the earlier fixed-industry, refinery, food, and gate scen
 - Discovered ore patches support resource extractors.
 - The world uses a square grid. Low-yield 1 by 1 deposits lie near the colony, higher-yield 2 by 2 deposits farther away, and the highest-yield 3 by 3 deposits in more distant areas.
 - The map has two elevations, connected by straight ramp passes. Hillsides cannot be traversed or built on. Buildings and their south ports need flat, equal-height ground; rails and conduits cross elevations only through ramps. No NavMesh, bridges, tunnels, or terraforming are included.
+- Both plateaus are enclosed by cliffs on all four sides with low ground around them. The northern plateau has a smaller 7x7 flat top, southern access, and an eastern descent into the valley between the plateaus. See the current layout in [Terrain milestone](TERRAIN_MILESTONE.md).
 - All resource deposits are infinite. Exploration unlocks higher production rates while established mines remain useful indefinitely.
 - Extractors must connect to the solar and colony electrical network through power conduits.
 - A shared colony battery supplies rover movement and ongoing extractor consumption.
@@ -122,7 +123,7 @@ Proposed recovery rules: solar bootstraps fuel extraction, trains do not require
 
 Implemented tuning defaults: a plant occupies 2 by 2 clear cells, costs 250 credits, holds 48 Fluxite, and supplies up to 8 power/second. Each fuel unit provides 40 power; remaining burn energy is retained through pause, disconnection, or a satisfied battery. Solar generation is applied first. A plant consumes only enough energy to fill remaining battery headroom, so displayed actual output can be below its rated maximum. Fuel consumed counts units opened for combustion, including the unit whose remaining energy is displayed by the plant.
 
-Fluxite deposits are at `(13, 3)` (1 by 1) and `(4, 17)` (2 by 2). These are additional deposits, not replacements for the five ore sites. Extractors use the same tier prices, mining power, storage, and upgrades for either resource. Ore and fuel have independent conservation ledgers.
+Fluxite deposits are at `(13, 8)` (1 by 1) and `(4, 23)` (2 by 2, on the northern plateau). Ore sites are at `(10, 4)` and `(12, 16)` (1 by 1), `(22, 16)` (2 by 2). The former 2 by 2 ore sites at `(15, 11)` and `(20, 6)` were removed; the former 3 by 3 site at `(22, 16)` now uses the 2 by 2 footprint and yield, and both small ore sites moved farther from the colony to encourage exploration. Extractors use the same tier prices, mining power, storage, and upgrades for either resource. Ore and fuel have independent conservation ledgers.
 
 ## Construction and extraction
 

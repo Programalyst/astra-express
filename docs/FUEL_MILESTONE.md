@@ -2,6 +2,12 @@
 
 13 September 2026 · extension of the first playable ore checkpoint
 
+## Current visual update — 14 September 2026
+
+Power plants use `Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/SM_Prop_PowerGenerator_01.prefab`, preserving its existing URP materials and glass. The generator is centered on the unchanged 2x2 foundation and uniformly fitted within a 3.6-unit width and 2.6-unit height. The older generated reactor/exchanger props are removed. Placement, south port, fuel storage, consumption, and power generation are unchanged. The imported visual prefab omits legacy convex colliders that require a missing source-project editor plugin; simulation occupancy remains authoritative. Historical implementation and verification notes below describe the earlier art.
+
+Validation: Unity compiled cleanly and a fresh Web export succeeded in 24 seconds. In the rebuilt local Chrome player, the generator rendered with its cyan/glass details, placement charged 250 credits, and conduit/rail construction connected its south port to the colony (8 and 12 credits respectively). The plant panel reported connected power/rails and the expected empty-fuel state. This was a visual/placement check, not a new end-to-end fuel-delivery playtest. No Sites deployment was performed.
+
 ## Implemented
 
 - Infinite green Fluxite deposits at `(13, 3)` (1x1) and `(4, 17)` (2x2), with ordinary extractor costs and output upgrades.

@@ -113,8 +113,8 @@ public static class AstraExpressEditor
         game.ColonyModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Buildings/SM_Bld_Pod_Research_05.prefab");
         game.SolarModel = LoadModel("Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx");
         game.ExtractorModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/SM_Prop_Drill_03.prefab");
-        game.PowerPlantModel = LoadModel(SpaceRoot + "machine_generatorLarge.fbx");
-        game.OreModel = LoadModel(SpaceRoot + "rock_largeA.fbx");
+        game.PowerPlantModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/SM_Prop_PowerGenerator_01.prefab");
+        game.OreModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Orefield.prefab");
         game.FluxiteModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Single Crystal.prefab");
         game.TrainModel = LoadModel(SpaceRoot + "monorail_trainFront.fbx");
         game.TerrainModel = LoadModel(SpaceRoot + "terrain.fbx");

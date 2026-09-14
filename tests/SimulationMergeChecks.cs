@@ -29,6 +29,33 @@ class Review
         var sim = new ColonySimulation();
         sim.Reveal(14, 11, 100);
         var terrain = sim.Terrain;
+        foreach (var bounds in new[] { new[] { 17, 29, 3, 28 }, new[] { 1, 9, 18, 26 } })
+        {
+            for (int column = bounds[0]; column <= bounds[1]; column++)
+                for (int row = bounds[2]; row <= bounds[3]; row++)
+                {
+                    var cell = new Cell(column, row);
+                    bool boundary = column == bounds[0] || column == bounds[1] || row == bounds[2] || row == bounds[3];
+                    Check(boundary ? terrain.Kind(cell) != TerrainKind.Flat : terrain.Kind(cell) == TerrainKind.Flat && terrain.Elevation(cell) == 1, "Plateau interior is enclosed on all four sides");
+                }
+            foreach (int column in new[] { bounds[0], bounds[1] })
+                foreach (int row in new[] { bounds[2], bounds[3] })
+                    Check(terrain.IsCorner(new Cell(column, row)), "All four cliff corners are recognized");
+        }
+        foreach (var cell in new[] { new Cell(0, 23), new Cell(4, 27), new Cell(4, 17), new Cell(10, 22), new Cell(30, 16), new Cell(22, 29), new Cell(22, 2) })
+            Check(terrain.Walkable(cell) && terrain.Elevation(cell) == 0 && terrain.HeightAt(cell.X, cell.Y) == 0, "Low ground surrounds bounded plateaus");
+        var upperExit = new Cell(8, 22);
+        var valleyRamp = new Cell(9, 22);
+        var valleyExit = new Cell(10, 22);
+        Check(terrain.Kind(valleyRamp) == TerrainKind.Ramp && terrain.Uphill(valleyRamp).Equals(new Cell(-1, 0)), "New northern exit slopes east into the valley");
+        Check(terrain.CanTraverse(upperExit, valleyRamp) && terrain.CanTraverse(valleyRamp, valleyExit) && terrain.CanTraverse(valleyExit, valleyRamp) && terrain.CanTraverse(valleyRamp, upperExit), "Valley ramp traverses both ways");
+        Check(!terrain.CanTraverse(valleyRamp, new Cell(9, 21)) && !terrain.CanTraverse(valleyRamp, new Cell(9, 23)), "Valley ramp rejects sideways exits");
+        Check(Math.Abs(terrain.EdgeCost(upperExit, valleyRamp) + terrain.EdgeCost(valleyRamp, valleyExit) - 2.25f) < .0001f, "Descending valley ramp has correct surface distance");
+        Reach(sim, upperExit);
+        Reach(sim, valleyExit);
+        Reach(sim, upperExit);
+        var exitRoute = new[] { upperExit, valleyRamp, valleyExit };
+        Check(sim.Lay(exitRoute, false) && sim.Lay(exitRoute, true), "Both power and rail infrastructure cross new valley ramp");
         Check(ColonySimulation.Width == 32 && ColonySimulation.Height == 32, "Grid is 32 by 32");
         Check(ColonySimulation.InBounds(new Cell(31, 31)), "Expanded corner is in bounds");
         Check(!ColonySimulation.InBounds(new Cell(32, 31)) && !ColonySimulation.InBounds(new Cell(31, 32)), "Expanded boundaries reject outside cells");
@@ -69,9 +96,9 @@ class Review
         Check(sim.Credits == credits && sim.Conduits.Count == conduits && sim.Rails.Count == rails, "Rejected terrain routes preserve money and networks");
         // Positive network test reaches a real plateau deposit from the real colony.
         // Reuse the earned credits and idle locomotive from the fleet scenarios.
-        var plateau = Build(economy, StructureKind.Extractor, new Cell(20, 6));
+        var plateau = Build(economy, StructureKind.Extractor, new Cell(22, 16));
         var route = economy.FindPath(economy.Colony.Port, plateau.Port, c => economy.StructureAt(c) == null);
-        Check(route != null && route.Contains(new Cell(17, 5)), "Plateau connection uses north ramp");
+        Check(route != null && route.Any(cell => economy.Terrain.Kind(cell) == TerrainKind.Ramp), "Plateau connection uses a ramp");
         Check(economy.Lay(route, false) && plateau.Connected, "Conduit powers plateau mine across ramp");
         Check(economy.Lay(route, true) && economy.RailRoute(plateau) != null, "Rail reaches plateau mine across ramp");
         Check(economy.Trains.Any(train => train.Source == plateau), "Plateau rail connection automatically dispatches ore service");
@@ -231,7 +258,7 @@ class Review
     {
         var sim = new ColonySimulation();
         sim.Reveal(16, 16, 100);
-        var ore = Build(sim, StructureKind.Extractor, new Cell(11, 7));
+        var ore = Build(sim, StructureKind.Extractor, new Cell(10, 4));
         Check(sim.Lay(new[] { ore.Port }, true), "Lay disconnected extractor rail stub");
         Check(sim.Train.Phase == TrainPhase.Parked, "Disconnected track does not dispatch");
         Link(sim, ore, true);
@@ -244,7 +271,7 @@ class Review
         Link(sim, ore, false);
         Advance(sim, 180);
         Check(sim.Sold > 0, "Automatically dispatched service earns credits");
-        var secondOre = Build(sim, StructureKind.Extractor, new Cell(8, 13));
+        var secondOre = Build(sim, StructureKind.Extractor, new Cell(12, 16));
         Link(sim, secondOre, true);
         Check(sim.Train.Source == ore && !sim.Trains.Any(train => train.Source == secondOre), "Busy train is not stolen for a new route");
         Check(sim.Message.Contains("Fleet"), "No-idle-train message points to Fleet");
@@ -259,7 +286,7 @@ class Review
 
         var fuelSim = new ColonySimulation();
         fuelSim.Reveal(16, 16, 100);
-        var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 3));
+        var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 8));
         Link(fuelSim, fuel, true);
         Check(fuelSim.Train.Phase == TrainPhase.Parked, "Fluxite waits for a reachable plant rather than going to colony");
         var plant = Build(fuelSim, StructureKind.PowerPlant, new Cell(14, 5));
@@ -270,18 +297,37 @@ class Review
 
         var prewired = new ColonySimulation();
         prewired.Reveal(16, 16, 100);
-        Check(prewired.Lay(prewired.FindPath(prewired.Colony.Port, new Cell(11, 6), cell => prewired.StructureAt(cell) == null), true), "Lay rails before extractor construction");
-        var prewiredOre = Build(prewired, StructureKind.Extractor, new Cell(11, 7));
+        Check(prewired.Lay(prewired.FindPath(prewired.Colony.Port, new Cell(10, 3), cell => prewired.StructureAt(cell) == null && prewired.DepositAt(cell) == null), true), "Lay rails before extractor construction");
+        var prewiredOre = Build(prewired, StructureKind.Extractor, new Cell(10, 4));
         Check(prewired.Train.Source == prewiredOre, "Building on a preconnected port starts service");
     }
 
     static void Main()
     {
+        var layout = new ColonySimulation();
+        Check(layout.DepositAt(new Cell(13, 3)) == null, "Previous nearby ore location is empty");
+        Check(layout.DepositAt(new Cell(10, 4))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(10, 4))?.Size == 1, "Nearby ore is a 1x1 patch at (10, 4)");
+        Check(layout.DepositAt(new Cell(13, 8))?.Resource == ResourceKind.Fluxite && layout.DepositAt(new Cell(13, 8))?.Size == 1, "Small Fluxite moves to the former nearby ore site");
+        Check(layout.Deposits.Count == 5 && layout.Deposits.Count(deposit => deposit.Resource == ResourceKind.Ore && deposit.Size == 2) == 1, "Only the resized distant 2x2 ore patch remains");
+        Check(layout.DepositAt(new Cell(20, 6)) == null, "Former eastern 2x2 ore patch is removed");
+        Check(layout.DepositAt(new Cell(22, 16))?.Size == 2 && layout.Deposits.All(deposit => deposit.Size < 3), "Former 3x3 ore patch uses the 2x2 tier");
+        Check(layout.DepositAt(new Cell(24, 16)) == null && layout.DepositAt(new Cell(22, 18)) == null, "Resized ore releases its former outer row and column");
+        Check(layout.DepositAt(new Cell(15, 11)) == null && layout.DepositAt(new Cell(11, 7)) == null && layout.DepositAt(new Cell(8, 13)) == null && layout.DepositAt(new Cell(4, 17)) == null, "Former nearby resource sites are empty");
+        foreach (var deposit in layout.Deposits)
+        {
+            var port = new Cell(deposit.Origin.X, deposit.Origin.Y - 1);
+            var footprint = ColonySimulation.Footprint(deposit.Origin, deposit.Size).ToList();
+            Check(footprint.All(cell => ColonySimulation.InBounds(cell) && layout.Terrain.Kind(cell) == TerrainKind.Flat && layout.Terrain.Elevation(cell) == layout.Terrain.Elevation(port)), "Deposit footprint is level with its port");
+            Check(layout.FindPath(layout.Colony.Port, port, cell => layout.StructureAt(cell) == null) != null, "Resource port remains reachable");
+            Check(footprint.All(cell => layout.Deposits.Count(other => other.Contains(cell)) == 1 && layout.StructureAt(cell) == null), "Deposit does not overlap another deposit or starter structure");
+            Check(!layout.FullyRevealed(deposit), "Resource sites require exploration");
+        }
+        Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "Moved Fluxite stays on northern plateau");
         var sim=new ColonySimulation(); sim.Reveal(14,11,100);
-        var ore=Build(sim,StructureKind.Extractor,new Cell(11,7)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
+        var ore=Build(sim,StructureKind.Extractor,new Cell(10,4)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");
         Check(sim.BuyTrain(),"Buy second train");var second=sim.Trains[1];Check(sim.UpgradeTrain(second),"Upgrade selected second");Check(second.Capacity==8 && sim.Train.Capacity==4,"Only selected second upgraded");
-        var fuel=Build(sim,StructureKind.Extractor,new Cell(13,3));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
+        var fuel=Build(sim,StructureKind.Extractor,new Cell(13,8));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
         plant.Paused=true;Check(second.Source==fuel && second.Destination==plant,"Automatic fuel dispatch");int soldBefore=sim.Sold,creditsBefore=sim.Credits;Advance(sim,300);
         Check(sim.Sold>soldBefore,"Ore continues while fuel service runs");Check(sim.Credits-creditsBefore==(sim.Sold-soldBefore)*8,"Only ore credits awarded");Check(sim.FuelDelivered>0,"Fluxite delivery");Check(sim.FuelConsumed==0,"Paused plant does not burn");Check(plant.Stock==plant.Storage,"Plant fills to capacity");
         Check(second.Cargo>0 && second.Phase==TrainPhase.Unloading,"Full plant retains waiting fuel cargo");int retained=second.Cargo;sim.ParkTrain(second);Advance(sim,30);Check(second.Cargo==retained,"Park request retains blocked cargo");Check(second.Phase==TrainPhase.Unloading && second.ParkRequested,"Park waits for safe cargo delivery");Check(sim.Train.Source==ore && !sim.Train.ParkRequested,"Other train not parked");

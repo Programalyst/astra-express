@@ -1,5 +1,11 @@
 # Two-elevation terrain milestone
 
+Latest resource adjustment: the nearby 1x1 ore now occupies `(10, 4)`, with its extractor port at `(10, 3)`; its previous site `(13, 3)` is empty. The 1x1 Fluxite remains at `(13, 8)`. Plateau geometry and other deposits are unchanged.
+
+Current enclosed-plateau layout: the eastern plateau has cliff boundaries at columns 17/29 and rows 3/28, with flat upper ground at columns 18–28 and rows 4–27. Its western ramps remain `(17, 5)` and `(17, 15)`. The smaller northern plateau has cliffs at columns 1/9 and rows 18/26, enclosing a 7x7 flat top at columns 2–8 and rows 19–25. Its south access moves to `(4, 18)`; a new east-facing descent at `(9, 22)` connects directly to the low valley between the plateaus. Both mesas have four corner pieces, four cliff sides interrupted only by ramps, and surrounding low ground. Resource coordinates are unchanged. Historical layouts follow below.
+
+14 September layout refinement: the northern 2x2 Fluxite patch moves from `(4, 17)` to `(4, 23)`, with its south port at `(4, 22)`, on the existing 32x32 map's northern plateau. The ramp remains at `(4, 15)`. Small ore sites move to `(13, 8)` and `(12, 16)` in the lowlands; the nearby 2x2 ore at `(15, 11)` is removed. The eastern 2x2 ore at `(20, 6)` is also removed, and the former 3x3 ore at `(22, 16)` is reduced to 2x2 with the corresponding tier yield. The earlier milestone notes below describe the original layout.
+
 13 September 2026. The colony remains in the lowlands. Columns 18–27 form an upper plateau 1.5 Unity units higher. Column 17 is an impassable hillside except for straight ramp passes at cells `(17, 5)` and `(17, 15)`. The existing eastern 2x2 and 3x3 ore deposits lie on the plateau. Coordinates are zero-based.
 
 The northern 2x2 Fluxite patch at `(4, 17)` now sits on a separate plateau at the same upper elevation. Its flat area spans columns 0–8 and rows 16–21, including the extractor's south port at `(4, 16)`. Hillsides line row 15 and column 9, with a northbound ramp at `(4, 15)` and an impassable outer corner at `(9, 15)`. The lowland corridor between the plateaus remains open. The deposit's location, yield, and infinite supply are unchanged.

@@ -144,15 +144,15 @@ class BotControlChecks
         portCommand.Start("connect_conduit", ArrayAt(portCommand, site).Port); portCommand.Run();
         Check(portCommand.Status == "complete" && ArrayAt(portCommand, site).Connected, "Explicit conduit command accepts the actual building port");
         var railCommand = Game();
-        var mineSite = new Cell(11, 7);
+        var mineSite = new Cell(10, 4);
         Check(railCommand.Simulation.Build(StructureKind.Extractor, mineSite), "Place mine for shared rail adapter");
         railCommand.Start("connect_rail", mineSite); railCommand.Run();
         Check(railCommand.Status == "complete" && railCommand.Simulation.RailRoute(ArrayAt(railCommand, mineSite)) != null, "Rails use the same verified connection adapter");
 
         var expansion = Game(1000);
         var expansionSolar = new Cell(8, 9);
-        var firstMine = new Cell(11, 7);
-        var secondMine = new Cell(15, 11);
+        var firstMine = new Cell(10, 4);
+        var secondMine = new Cell(22, 16);
         expansion.Start("build_solar", expansionSolar); expansion.Run();
         Check(expansion.Status == "complete" && ArrayAt(expansion, expansionSolar).Connected, "Expansion solar joins the shared colony power grid");
         expansion.Start("build_extractor", firstMine); expansion.Run();

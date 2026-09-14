@@ -188,7 +188,7 @@ namespace AstraExpress
                 {
                     bool fluxite = deposit.Resource == ResourceKind.Fluxite;
                     bool crystal = fluxite && FluxiteModel != null;
-                    var cluster = Model(crystal ? FluxiteModel : OreModel, fluxite ? "Fluxite" : "Ore", worldRoot, Position(cell, 0), 1.55f, crystal ? 1.4f : 0.8f, crystal);
+                    var cluster = Model(crystal ? FluxiteModel : OreModel, fluxite ? "Fluxite" : "Ore", worldRoot, Position(cell, 0), 1.55f, crystal ? 1.4f : 0.8f, crystal || !fluxite, fitToBounds: fluxite);
                     cluster.transform.Rotate(0, (cell.X * 37 + cell.Y * 19) % 360, 0);
                     if (fluxite && !crystal)
                         foreach (var renderer in cluster.GetComponentsInChildren<Renderer>()) renderer.sharedMaterial = fuelMaterial;
@@ -219,7 +219,7 @@ namespace AstraExpress
             return instance;
         }
 
-        private GameObject Model(GameObject prefab, string objectName, Transform parent, Vector3 position, float width, float height, bool preserveMaterials = false)
+        private GameObject Model(GameObject prefab, string objectName, Transform parent, Vector3 position, float width, float height, bool preserveMaterials = false, bool fitToBounds = true)
         {
             var holder = new GameObject(objectName);
             holder.transform.SetParent(parent, false);
@@ -236,7 +236,7 @@ namespace AstraExpress
             if (renderers.Length == 0) return holder;
             var bounds = renderers[0].bounds;
             foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
-            float scale = Mathf.Min(width / Mathf.Max(bounds.size.x, bounds.size.z, 0.01f), height / Mathf.Max(bounds.size.y, 0.01f));
+            float scale = fitToBounds ? Mathf.Min(width / Mathf.Max(bounds.size.x, bounds.size.z, 0.01f), height / Mathf.Max(bounds.size.y, 0.01f)) : 1f;
             Vector3 center = bounds.center - holder.transform.position;
             model.transform.localScale *= scale;
             model.transform.localPosition = new Vector3(-center.x * scale, -(bounds.min.y - holder.transform.position.y) * scale, -center.z * scale);
@@ -275,7 +275,7 @@ namespace AstraExpress
             foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
             tile.transform.localScale = new Vector3(TerrainGrid.CellSize / Mathf.Max(bounds.size.x, 0.01f), TerrainGrid.LevelHeight / Mathf.Max(bounds.size.y, 0.01f), TerrainGrid.CellSize / Mathf.Max(bounds.size.z, 0.01f));
             Cell uphill = Simulation.Terrain.Uphill(cell);
-            float yaw = Simulation.Terrain.IsCorner(cell) ? 90 : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
+            float yaw = Simulation.Terrain.IsCorner(cell) ? Simulation.Terrain.CornerYaw(cell) : Mathf.Atan2(-uphill.X, -uphill.Y) * Mathf.Rad2Deg;
             tile.transform.localRotation = Quaternion.Euler(0, yaw, 0);
             foreach (var filter in tile.GetComponentsInChildren<MeshFilter>())
             {
@@ -375,20 +375,16 @@ namespace AstraExpress
                 root.SetParent(worldRoot);
                 root.position = center;
                 bool extractor = structure.Kind == StructureKind.Extractor;
+                bool powerPlant = structure.Kind == StructureKind.PowerPlant;
                 if (!extractor)
                     Box("Foundation", root, new Vector3(0, 0.04f, 0), new Vector3(structure.Size * 1.93f, 0.2f, structure.Size * 1.93f), foundationMaterial);
                 GameObject prefab = structure.Kind == StructureKind.Colony ? ColonyModel : structure.Kind == StructureKind.Solar ? SolarModel : structure.Kind == StructureKind.PowerPlant ? PowerPlantModel : ExtractorModel;
-                var model = Model(prefab, structure.Kind.ToString(), root, new Vector3(0, extractor ? 0 : 0.15f, 0), structure.Size * 1.8f, extractor ? structure.Size * 2.2f : structure.Kind == StructureKind.Colony ? 2.6f : 1.5f, extractor || structure.Kind == StructureKind.Colony);
+                var model = Model(prefab, structure.Kind.ToString(), root, new Vector3(0, extractor ? 0 : 0.15f, 0), structure.Size * 1.8f, extractor ? structure.Size * 2.2f : structure.Kind == StructureKind.Colony || powerPlant ? 2.6f : 1.5f, extractor || structure.Kind == StructureKind.Colony || powerPlant);
                 if (extractor)
                 {
                     var animators = model.GetComponentsInChildren<Animator>(true);
                     foreach (var animator in animators) animator.speed = 0;
                     extractorAnimators[structure] = animators;
-                }
-                if (structure.Kind == StructureKind.PowerPlant)
-                {
-                    Box("Fluxite reactor", root, new Vector3(-0.95f, 1.25f, 0.7f), new Vector3(0.75f, 2.2f, 0.75f), fuelMaterial);
-                    Box("Heat exchanger", root, new Vector3(0.95f, 1.05f, 0.7f), new Vector3(0.55f, 1.8f, 0.55f), railMaterial);
                 }
                 buildings[structure] = root;
             }
@@ -649,7 +645,7 @@ namespace AstraExpress
             string[] titles = { "Explore the frontier", "Build your first extractor", "Bring the mine online", "Connect a paying railway", "Your first delivery", "Find a stronger power source", "Build the fuel supply line", "Light the reactor", "An industrial frontier" };
             string[] descriptions = {
                 "Click ground east of the colony. Your rover reveals ore hidden by the fog.",
-                "Choose Extractor, then click the orange ore patch. Keep its south port clear.",
+                "Choose Extractor, then click the revealed ore patch. Keep its south port clear.",
                 "Choose Conduit. Click the colony's cyan port, then the extractor's south port.",
                 "Lay rails between those same ports. An idle train dispatches automatically when the route is complete.",
                 "The train collects local ore and sells it at the colony. Only deliveries earn credits.",

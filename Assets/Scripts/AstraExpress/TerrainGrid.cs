@@ -10,34 +10,81 @@ namespace AstraExpress
         public const float CellSize = 2;
         public const int HillsideColumn = 17;
         public const int NorthernHillsideColumn = 9;
-        public const int NorthernHillsideRow = 15;
+        public const int NorthernHillsideRow = 18;
         public const int NorthernRampColumn = 4;
+        public const int NorthernValleyRampRow = 22;
+        private static readonly Plateau[] plateaus =
+        {
+            new Plateau(17, 29, 3, 28),
+            new Plateau(1, 9, NorthernHillsideRow, 26)
+        };
+
+        private sealed class Plateau
+        {
+            public readonly int West, East, South, North;
+            public Plateau(int west, int east, int south, int north)
+            {
+                West = west; East = east; South = south; North = north;
+            }
+            public bool Contains(Cell cell) => cell.X >= West && cell.X <= East && cell.Y >= South && cell.Y <= North;
+            public bool Interior(Cell cell) => cell.X > West && cell.X < East && cell.Y > South && cell.Y < North;
+            public float Height(float column, float row) => Math.Max(0, Math.Min(1,
+                Math.Min(Math.Min(column - West + 0.5f, East + 0.5f - column),
+                    Math.Min(row - South + 0.5f, North + 0.5f - row))));
+        }
+
+        private Plateau Boundary(Cell cell)
+        {
+            foreach (var plateau in plateaus)
+                if (plateau.Contains(cell) && !plateau.Interior(cell)) return plateau;
+            return null;
+        }
 
         public TerrainKind Kind(Cell cell)
         {
-            if (cell.X == HillsideColumn) return cell.Y == 5 || cell.Y == 15 ? TerrainKind.Ramp : TerrainKind.Hillside;
-            if (cell.X <= NorthernHillsideColumn && cell.Y == NorthernHillsideRow)
-                return cell.X == NorthernRampColumn ? TerrainKind.Ramp : TerrainKind.Hillside;
-            if (cell.X == NorthernHillsideColumn && cell.Y > NorthernHillsideRow) return TerrainKind.Hillside;
-            return TerrainKind.Flat;
+            if (Boundary(cell) == null) return TerrainKind.Flat;
+            if (cell.X == HillsideColumn && (cell.Y == 5 || cell.Y == 15)
+                || cell.X == NorthernRampColumn && cell.Y == NorthernHillsideRow
+                || cell.X == NorthernHillsideColumn && cell.Y == NorthernValleyRampRow) return TerrainKind.Ramp;
+            return TerrainKind.Hillside;
         }
 
-        public int Elevation(Cell cell) => cell.X > HillsideColumn || cell.X < NorthernHillsideColumn && cell.Y > NorthernHillsideRow ? 1 : 0;
+        public int Elevation(Cell cell)
+        {
+            foreach (var plateau in plateaus)
+                if (plateau.Interior(cell)) return 1;
+            return 0;
+        }
         public bool Walkable(Cell cell) => ColonySimulation.InBounds(cell) && Kind(cell) != TerrainKind.Hillside;
-        public bool IsCorner(Cell cell) => cell.X == NorthernHillsideColumn && cell.Y == NorthernHillsideRow;
+        public bool IsCorner(Cell cell)
+        {
+            var plateau = Boundary(cell);
+            return plateau != null && (cell.X == plateau.West || cell.X == plateau.East)
+                && (cell.Y == plateau.South || cell.Y == plateau.North);
+        }
+
+        public float CornerYaw(Cell cell)
+        {
+            var plateau = Boundary(cell);
+            if (plateau == null || !IsCorner(cell)) return 0;
+            return cell.Y == plateau.South ? (cell.X == plateau.East ? 90 : 180)
+                : (cell.X == plateau.East ? 0 : 270);
+        }
 
         public Cell Uphill(Cell cell)
         {
-            if (cell.X == HillsideColumn) return new Cell(1, 0);
-            if (cell.Y == NorthernHillsideRow) return new Cell(0, 1);
-            return new Cell(-1, 0);
+            var plateau = Boundary(cell);
+            if (plateau == null) return new Cell(0, 0);
+            if (cell.X == plateau.West) return new Cell(1, 0);
+            if (cell.X == plateau.East) return new Cell(-1, 0);
+            return new Cell(0, cell.Y == plateau.South ? 1 : -1);
         }
 
         public float HeightAt(float column, float row)
         {
-            float easternHeight = Math.Max(0, Math.Min(1, column - HillsideColumn + 0.5f));
-            float northernHeight = Math.Max(0, Math.Min(1, Math.Min(NorthernHillsideColumn + 0.5f - column, row - NorthernHillsideRow + 0.5f)));
-            return LevelHeight * Math.Max(easternHeight, northernHeight);
+            float height = 0;
+            foreach (var plateau in plateaus) height = Math.Max(height, plateau.Height(column, row));
+            return LevelHeight * height;
         }
 
         public bool CanTraverse(Cell from, Cell to)
