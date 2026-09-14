@@ -1,5 +1,8 @@
 #coach { --mint:#93ead5; --ink:#eaf5f3; --dim:#a3b8bb; position:fixed; z-index:20; left:18px; bottom:calc(var(--game-scale, 1) * 134px); font:14px/1.5 system-ui,sans-serif; color:var(--ink); pointer-events:none; }
 #coach[hidden] { display:none; }
+#astrabot-avatar-home{position:fixed;left:calc(37vw - 24px);bottom:calc(var(--game-scale,1) * 138px + 45px);z-index:52;border:0;padding:0;background:transparent;cursor:pointer}
+#astrabot-avatar-home[hidden]{display:none}#astrabot-avatar-home .astrabot-avatar{width:48px;height:54px}
+#astrabot-avatar-home:focus-visible{outline:2px solid #93ead5;border-radius:12px}
 #astrabot-enable { position:fixed; z-index:45; right:calc(var(--game-scale,1) * 226px); top:calc(var(--game-scale,1) * 17px); width:calc(var(--game-scale,1) * 166px); height:calc(var(--game-scale,1) * 36px); display:flex; align-items:center; justify-content:center; gap:calc(var(--game-scale,1) * 9px); padding:0 8px; border:1px solid #537c7b; border-radius:6px; background:#102b36; color:#e7f5ee; font:600 calc(var(--game-scale,1) * 12px)/1 system-ui,sans-serif; cursor:pointer; }
 #astrabot-enable:hover { background:#1a3b45; }
 #astrabot-enable:focus-visible { outline:2px solid #a8f4da; outline-offset:3px; }
@@ -26,7 +29,7 @@
 .coach-teaser span { display:block; font-size:12px; line-height:1.4; }
 #coach-panel { position:absolute; bottom:82px; left:0; width:min(320px,calc(100vw - 36px)); border:1px solid #9be8d53d; border-radius:18px; background:linear-gradient(145deg,#17313af7,#0d202bf7 70%); box-shadow:0 16px 55px #0007; backdrop-filter:blur(16px); transform:translateY(15px) translateX(-12px); opacity:0; visibility:hidden; pointer-events:none; transition:transform .24s ease,opacity .24s ease,visibility .24s; max-height:calc(100vh - 245px); overflow:auto; }
 #coach[data-open="true"] #coach-panel { transform:translate(0); opacity:1; visibility:visible; pointer-events:auto; }
-#coach[data-open="true"] .coach-teaser { display:none; }
+#coach[data-open="true"] .coach-teaser { display:block; }
 .coach-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px 10px; border-bottom:1px solid #d2fff015; }
 .coach-name { font-size:16px; font-weight:650; letter-spacing:.01em; }
 .coach-role { margin-left:7px; color:var(--dim); font-size:11px; }
@@ -58,6 +61,8 @@
 .coach-proactive { display:flex; justify-content:center; align-items:center; width:100%; margin-top:8px; padding:8px 10px; border:1px solid #9cf0d56b; border-radius:8px; background:#8ee7ce1a; color:#dffff4; font-size:11px!important; font-weight:650!important; }
 .coach-proactive::before { content:"→"; margin-right:7px; color:#aaffdf; }
 .coach-proactive:hover { background:#8ee7ce2c; border-color:#9cf0d5; }
+.coach-ablation { width:100%; margin-top:6px; padding:6px 9px; border:1px dashed #ffd28b66; border-radius:7px; background:#ffd28b0a; color:#ffe3b2; font-size:10px!important; }
+#coach-comparison { margin:6px 0 0; padding:6px 8px; border-left:2px solid #ffd28b; background:#ffd28b0a; color:#ffe4b9; font:600 9px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
 #coach-form { display:flex; gap:6px; margin-top:13px; padding-top:12px; border-top:1px solid #d2fff015; }
 #coach-question { flex:1; min-width:0; border:1px solid #98dac629; background:#061b2466; color:#eaf5f3; border-radius:7px; padding:8px 9px; font-size:12px!important; }
 #coach-question::placeholder { color:#78989e; }
@@ -87,5 +92,30 @@
 @keyframes astrabot-evidence { 0%,100% { opacity:.82; } 50% { opacity:1; } }
 @keyframes astrabot-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
 @keyframes astrabot-blink { 0%,43%,47%,100%{transform:scaleY(1)} 45%{transform:scaleY(.12)} }
+.coach-dock { display:flex; align-items:flex-end; gap:8px; pointer-events:auto; }
+#coach{bottom:calc(var(--game-scale,1) * 138px + 62px)}
+.coach-dock .coach-teaser { width:265px; max-width:calc(100vw - 128px); padding:12px 14px; }
+.coach-dock .coach-teaser strong { margin-bottom:5px; }
+.coach-dock-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.coach-dock-actions button:not(#coach-offer-dismiss) { border:1px solid #9ae8ce70; border-radius:7px; padding:7px 10px; font-size:12px!important; font-weight:650!important; background:#a4efd5; color:#102e2b; cursor:pointer; }
+.coach-dock-actions #coach-task-quick { background:#24434b; color:#dbf9ee; border-color:#648e88; }
+#coach-task-quick:only-child { background:#a4efd5; color:#102e2b; }
+#coach-offer-dismiss { padding:2px 6px; border:0; background:transparent; color:#a8c6c3; margin-left:auto; }
+#coach-thinking { margin-top:5px; color:#ffe0a3; font-size:12px; }
+#coach-panel { bottom:145px; max-height:calc(100vh - 310px); }
+#coach[data-thinking="true"] .astrabot-float { animation:astrabot-think 1.5s ease-in-out infinite; }
+#coach[data-thinking="true"] .astrabot-eye { animation:astrabot-look 1.5s ease-in-out infinite; }
+.astra-dots { display:inline-flex!important; flex-direction:row; gap:4px; margin-left:5px; vertical-align:middle; }
+.astra-dots i { display:inline-block; width:4px; height:4px; border-radius:50%; background:currentColor; animation:astrabot-dot 1.2s ease-in-out infinite; }
+.astra-dots i:nth-child(2) { animation-delay:.16s; }.astra-dots i:nth-child(3) { animation-delay:.32s; }
+@keyframes astrabot-think { 0%,100% { transform:translateY(0) rotate(-5deg); } 50% { transform:translateY(-5px) rotate(5deg); } }
+@keyframes astrabot-look { 0%,100% { transform:translateX(-2px); } 50% { transform:translateX(2px) scaleY(.8); } }
+@keyframes astrabot-dot { 0%,70%,100% { transform:translateY(0); opacity:.4; } 35% { transform:translateY(-4px); opacity:1; } }
+#coach{width:min(400px,calc(100vw - 36px));padding:10px;border:1px solid #63867d;border-radius:12px;background:#102a32f5;box-sizing:border-box}
+#coach .coach-dock{align-items:center}#coach .coach-teaser{padding:0 4px;background:none;border:0;box-shadow:none;width:auto;max-width:none;flex:1}
+#coach .astrabot-avatar{width:48px;height:54px}#coach .coach-header{display:none}
+#coach #coach-panel{display:none;position:static;width:100%;max-height:35vh;overflow:auto;transform:none;opacity:1;visibility:visible;margin-top:10px;border:0;border-top:1px solid #63867d;border-radius:0;box-shadow:none;background:none}
+#coach[data-open="true"] #coach-panel{display:block}
 @media (max-height:650px) { #coach-panel{bottom:64px;max-height:calc(100vh - 195px)} .astrabot-avatar{width:54px;height:58px} .coach-body{padding:11px 15px} #coach-steps{gap:6px} #coach-form{margin-top:8px;padding-top:8px} }
-@media (prefers-reduced-motion:reduce) { #coach-panel,.coach-teaser { transition:none; } .astrabot-float,.astrabot-eye,.coach-crosshair-arms,#coach-evidence-box { animation:none; } }
+@media (max-height:650px) { #coach-panel { bottom:125px; max-height:calc(100vh - 235px); } .coach-dock .coach-teaser { padding:8px 10px; } }
+@media (prefers-reduced-motion:reduce) { #coach-panel,.coach-teaser { transition:none; } .astrabot-float,.astrabot-eye,.coach-crosshair-arms,#coach-evidence-box,#coach[data-thinking="true"] .astrabot-float,#coach[data-thinking="true"] .astrabot-eye,.astra-dots i { animation:none; } }

@@ -15,7 +15,7 @@
     return {...data, serverConfigured:!!data.configured, configured:!!tabKey || !!data.configured, tabKey:!!tabKey};
   }
   async function request(path, options = {}) {
-    if (!["/api/coach", "/api/astrabot/plan"].includes(path) || options.method !== "POST") throw new Error("Unsupported AstraBot request.");
+    if (!["/api/coach", "/api/astrabot/plan", "/api/astrabot/chat"].includes(path) || options.method !== "POST") throw new Error("Unsupported AstraBot request.");
     const headers = {...options.headers};
     if (tabKey) headers["X-Astra-OpenAI-Key"] = tabKey;
     return fetch(path, {...options, headers, cache:"no-store", credentials:"same-origin", redirect:"error"});

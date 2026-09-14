@@ -14,6 +14,7 @@ namespace AstraExpress
             public int x = -1, y = -1, targetX = -1, targetY = -1, seconds = 5;
         }
         private Coroutine botRoutine;
+        private Func<float> companionArrivalWait;
         private bool botBusy, pickingTile, botRoverOrder;
         private Cell? pickedTile, botTarget;
         private string botActionId = "", botActionStatus = "idle", botActionMessage = "";
@@ -31,8 +32,21 @@ namespace AstraExpress
         public void CoachPickTile(string value)
         {
             if (botBusy) return;
+            if (value != null && value.StartsWith("set:", StringComparison.Ordinal))
+            {
+                string[] parts = value.Substring(4).Split(',');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int x) && int.TryParse(parts[1], out int y))
+                {
+                    var cell = new Cell(x, y);
+                    if (ColonySimulation.InBounds(cell) && Simulation.IsRevealed(cell))
+                    {
+                        pickedTile = cell; botTarget = cell;
+                    }
+                }
+                pickingTile = false; coachTimer = 1; return;
+            }
             pickingTile = value == "1";
-            if (value == "clear") pickedTile = null;
+            if (value == "clear") pickedTile = botTarget = null;
             if (pickingTile) { SetTool(Tool.Explore); HideLinkGuide(); }
             coachTimer = 1;
         }
@@ -42,8 +56,18 @@ namespace AstraExpress
             if (botRoutine != null) StopCoroutine(botRoutine);
             botRoutine = null;
             if (botBusy) FinishBot(false, "Stopped. Completed construction is kept; existing services continue.", "cancelled");
-            pickingTile = false; routeStart = null; HideLinkGuide(); tool = Tool.Explore;
+            pickingTile = false;
             coachTimer = 1;
+        }
+
+        // The player owns the camera, selection and construction tools. The only
+        // shared moving actor is the rover; a manual order explicitly wins.
+        private void YieldBotRoverToPlayer()
+        {
+            if (!botRoverOrder) return;
+            if (botRoutine != null) StopCoroutine(botRoutine);
+            botRoutine = null;
+            FinishBot(false, "You took control of the rover. AstraBot's task is stopped.", "cancelled");
         }
 
         // A deliberately narrow game control adapter. It accepts no scripts, hidden-state
@@ -83,28 +107,27 @@ namespace AstraExpress
             }
             if (command.type == "resume") { Simulation.Paused = false; FinishBot(true, "Colony resumed."); yield break; }
             if (Simulation.Paused) { FinishBot(false, "Colony is paused. Resume before taking an action."); yield break; }
+            if ((command.type == "auto_explore" || command.type == "explore") && Simulation.RoverMoving && !botRoverOrder)
+            { FinishBot(false, "The player is moving the rover. AstraBot yielded control.", "cancelled"); yield break; }
             if (command.type == "auto_explore") { yield return BotAutoExplore(); yield break; }
             if (command.type == "buy_train")
             {
-                selected = null; trainSelected = true; SetToolForFleet();
-                botActionMessage = "Opening Fleet to buy a locomotive";
+                botActionMessage = "Buying the approved locomotive";
                 yield return new WaitForSecondsRealtime(0.65f);
+                if (Simulation.Paused) { FinishBot(false, "Colony paused before purchase."); yield break; }
                 bool bought = Simulation.BuyTrain();
-                if (bought) selectedTrainIndex = Simulation.Trains.Count - 1;
                 FinishBot(bought, Simulation.Message); yield break;
             }
             var cell = new Cell(command.x, command.y);
             if (!ColonySimulation.InBounds(cell)) { FinishBot(false, "Choose a tile inside the map."); yield break; }
             if (command.type != "explore" && !Simulation.IsRevealed(cell)) { FinishBot(false, "Explore this tile before building or selecting it."); yield break; }
-            botTarget = cell; hover = cell;
-            CoachFocus($"{cell.X},{cell.Y}");
+            botTarget = cell;
             botActionMessage = $"Targeting tile ({cell.X}, {cell.Y})";
-            yield return new WaitForSecondsRealtime(0.55f);
+            yield return new WaitForSecondsRealtime(companionArrivalWait?.Invoke() ?? 1.4f);
+            if (Simulation.Paused) { FinishBot(false, "Colony paused before action."); yield break; }
             if (command.type == "explore")
             {
-                SetTool(Tool.Explore); selected = null;
                 if (!Simulation.OrderRover(cell)) { FinishBot(false, Simulation.Message); yield break; }
-                followRover = true;
                 botRoverOrder = true;
                 float deadline = Time.realtimeSinceStartup + 60;
                 botActionMessage = "Rover exploring; waiting for arrival";
@@ -123,19 +146,18 @@ namespace AstraExpress
                     else FinishBot(true, "This building already exists.");
                     yield break;
                 }
-                SetTool(kind == StructureKind.Extractor ? Tool.Extractor : kind == StructureKind.Solar ? Tool.Solar : Tool.PowerPlant);
-                yield return new WaitForSecondsRealtime(0.55f);
+                botActionMessage = $"Placing {kind} at ({cell.X}, {cell.Y})";
+                yield return new WaitForSecondsRealtime(1.2f);
                 if (Simulation.Paused) { FinishBot(false, "Colony paused before placement. No building was placed."); yield break; }
                 bool built = Simulation.Build(kind, cell);
                 if (built)
                 {
                     var placed = Simulation.StructureAt(cell);
-                    selected = placed; tool = Tool.Explore;
                     if (kind == StructureKind.Solar)
                     {
                         botActionMessage = "Solar placed. Connecting its south port to colony power";
                         // Let the placed array appear before presenting its conduit preview.
-                        yield return new WaitForSecondsRealtime(0.55f);
+                        yield return new WaitForSecondsRealtime(1.2f);
                         yield return BotConnectBuilding(placed, false, true);
                         yield break;
                     }
@@ -144,8 +166,7 @@ namespace AstraExpress
             }
             var building = BotBuilding(cell);
             if (building == null) { FinishBot(false, "There is no building or port on this tile."); yield break; }
-            selected = building; trainSelected = false; SetTool(Tool.Explore);
-            if (command.type == "select") { FinishBot(true, "Building selected."); yield break; }
+            if (command.type == "select") { FinishBot(true, "Building inspected; your selection is unchanged."); yield break; }
             if (command.type == "pause_mine" || command.type == "resume_mine")
             {
                 if (building.Kind != StructureKind.Extractor && building.Kind != StructureKind.PowerPlant) { FinishBot(false, "Only a mine or plant can be paused."); yield break; }
@@ -163,8 +184,8 @@ namespace AstraExpress
                 if (Simulation.Trains.Any(t => t.Source == building && t.Phase != TrainPhase.Parked)) { FinishBot(true, "This mine already has a train service."); yield break; }
                 Structure destination = building.Deposit.Resource == ResourceKind.Ore ? Simulation.Colony : BotBuilding(new Cell(command.targetX, command.targetY));
                 if (destination == null && building.Deposit.Resource == ResourceKind.Fluxite) destination = CoachFuelDestination(building);
-                if (destination != null && destination.Kind == StructureKind.PowerPlant) fuelDestination = destination;
                 yield return new WaitForSecondsRealtime(0.65f);
+                if (Simulation.Paused) { FinishBot(false, "Colony paused before dispatch."); yield break; }
                 bool dispatched = Simulation.Dispatch(building, destination);
                 FinishBot(dispatched, Simulation.Message); yield break;
             }
@@ -187,34 +208,25 @@ namespace AstraExpress
                 FinishBotConnectionFailure(kept + reason + " Existing construction is kept.");
                 yield break;
             }
-            selected = building; trainSelected = false;
-            CoachGuideLink($"{(rail ? "Rail" : "Conduit")},{building.Origin.X},{building.Origin.Y}");
-            SetTool(rail ? Tool.Rail : Tool.Conduit); verticalFirst = false;
-            botTarget = hover = start; PlaceNetworkAt(start);
-            if (!routeStart.HasValue || !routeStart.Value.Equals(start))
-            {
-                FinishBotConnectionFailure(kept + (Simulation.Paused ? "Colony is paused." : Simulation.Message));
-                yield break;
-            }
-            botTarget = hover = end;
+            botTarget = end;
             botActionMessage = $"Previewing {(rail ? "rails" : "conduits")} to the south port: {cost} credits";
             coachTimer = 1;
-            yield return new WaitForSecondsRealtime(0.9f);
+            yield return new WaitForSecondsRealtime(2.0f);
             // Recheck the same planner that the manual placement uses before it spends credits.
-            if (Simulation.Paused || !Simulation.TryPlanNetworkRoute(start, end, rail, verticalFirst, out _, out _, out reason))
+            if (Simulation.Paused || !Simulation.TryPlanNetworkRoute(start, end, rail, false, out _, out _, out reason))
             {
                 FinishBotConnectionFailure(kept + (Simulation.Paused ? "Colony paused before connecting." : reason));
                 yield break;
             }
-            PlaceNetworkAt(end);
-            if (routeStart.HasValue)
+            // Re-plan and lay atomically on Unity's main thread. Manual building
+            // during the preview can change occupancy, routes and available funds.
+            if (!Simulation.TryPlanNetworkRoute(start, end, rail, false, out var path, out _, out reason) || !Simulation.Lay(path, rail))
             {
                 FinishBotConnectionFailure(kept + Simulation.Message);
                 yield break;
             }
             Simulation.Reconnect();
             bool connected = rail ? Simulation.RailRoute(building) != null : building.Connected && Simulation.PoweredCells.Contains(building.Port);
-            HideLinkGuide(); SetTool(Tool.Explore);
             if (!connected)
             {
                 FinishBot(false, kept + "The colony cannot reach this port through the network. Existing construction is kept.");
@@ -229,13 +241,13 @@ namespace AstraExpress
 
         private void FinishBotConnectionFailure(string reason)
         {
-            routeStart = null; HideLinkGuide(); SetTool(Tool.Explore);
             FinishBot(false, reason);
         }
 
         private void DrawBotTarget()
         {
-            Cell? target = botTarget ?? pickedTile;
+            // The small in-world drone and beam replace the large action brackets.
+            Cell? target = botBusy && AstraBotModel != null ? null : botTarget ?? pickedTile;
             if (target.HasValue)
             {
                 Vector3 point = worldCamera.WorldToScreenPoint(Position(target.Value, 0.4f));

@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {advise,signature} = require('../Assets/WebGLTemplates/Astra/coach-policy.js');
+const {advise,signature,suggestTask,suggestTasks} = require('../Assets/WebGLTemplates/Astra/coach-policy.js');
 const point = (x,y) => ({x,y,screenX:.5,screenY:.5,visible:true});
 function state(extra={}) { return {session:'run-1',credits:500,battery:100,generation:2,demand:0,paused:false,
   tool:'Explore',message:'',selected:null,routeStarted:false,placementReason:'',
@@ -10,6 +10,30 @@ function mine(extra={}) {return {kind:'Extractor',origin:point(11,7),port:point(
   railConnected:false,stock:0,storage:24,level:1,demand:1,rate:.5,
   powerRoute:{possible:true,cost:12,stops:[point(5,6),point(11,6)]},
   railRoute:{possible:true,cost:18,stops:[point(5,6),point(11,6)]},...extra};}
+test('cooperative scan returns multiple bounded affordable actions without hidden targets',()=>{
+  const s=state({buildings:[mine()],deposits:[{origin:point(15,7),cost:150,buildable:true}]});
+  const tasks=suggestTasks(s);assert.equal(tasks.length,3);
+  assert.deepEqual(tasks.map(t=>t.action.type),['connect_conduit','build_extractor','auto_explore']);
+  assert.equal(tasks[0].cost,12);assert.equal(tasks[1].cost,150);assert.equal(tasks[2].action.x,undefined);
+  assert.deepEqual(suggestTasks({...s,paused:true}),[]);
+  assert.deepEqual(suggestTasks({...s,botBusy:true}),[]);
+  assert.deepEqual(suggestTasks({...s,frontier:null,credits:0}),[]);
+});
+test('proactive offers follow discovery, power and rail needs with exact known targets',()=>{
+  assert.equal(suggestTask(state()).id,'discover-ore');
+  const d={origin:point(11,7),cost:150,buildable:true};
+  assert.equal(suggestTask(state({deposits:[d]})).id,'mine-11-7');
+  const power=suggestTask(state({buildings:[mine()]}));
+  assert.equal(power.id,'power-11-7'); assert.deepEqual(power.target,point(11,7));
+  const rail=suggestTask(state({buildings:[mine({connected:true})]}));
+  assert.equal(rail.id,'rails-11-7'); assert.match(rail.goal,/Do not buy trains/);
+});
+test('proactive offers suppress paused and active work, unsafe exploration and unaffordable links',()=>{
+  for(const extra of [{paused:true},{botBusy:true},{pickingTile:true},{routeStarted:true},{roverMoving:true},{battery:10}]) assert.equal(suggestTask(state(extra)),null);
+  assert.equal(suggestTask(state({credits:0,frontier:null,buildings:[mine()]})),null);
+  assert.equal(suggestTask(state({frontier:null,buildings:[mine({powerRoute:{possible:false}})]})),null);
+  assert.equal(suggestTask(state({frontier:null,deposits:[{origin:point(11,7),cost:150,buildable:false}]})),null);
+});
 test('fresh game teaches exploration without undiscovered ore locations',()=>{
   const tip=advise(state())[0]; assert.equal(tip.id,'explore'); assert.deepEqual(tip.target,point(10,6)); assert.doesNotMatch(JSON.stringify(tip),/11, 7/);
 });

@@ -10,6 +10,7 @@ namespace AstraExpress
     public sealed partial class AstraGame : MonoBehaviour
     {
         public GameObject RoverModel;
+        public GameObject AstraBotModel;
         public GameObject ColonyModel;
         public GameObject SolarModel;
         public GameObject ExtractorModel;
@@ -309,6 +310,7 @@ namespace AstraExpress
             UpdateLinkGuide();
             UpdateNetworkPlacement();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
+            UpdateAstraBotVisual();
             foreach (var train in Simulation.Trains)
             {
                 MoveVisual(trainVisuals[train], Position(train.X, train.Y, 0.24f));
@@ -454,7 +456,7 @@ namespace AstraExpress
         private void HandleInput()
         {
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && (botBusy || pickingTile)) { CoachBotStop("Escape"); return; }
-            if (botBusy || coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
+            if (coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
             var mouse = Mouse.current;
             var keyboard = Keyboard.current;
             if (mouse == null) return;
@@ -515,6 +517,7 @@ namespace AstraExpress
                 trainSelected = false;
                 if (selected == null)
                 {
+                    YieldBotRoverToPlayer();
                     if (Simulation.OrderRover(target)) followRover = true;
                 }
                 else StopFollowingRover();
@@ -600,7 +603,7 @@ namespace AstraExpress
         private void OnGUI()
         {
             if (Simulation == null) return;
-            if ((botBusy || pickingTile || coachInputBlocked || Time.frameCount <= coachInputResumeFrame) && (Event.current.isMouse || Event.current.isKey || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
+            if ((pickingTile || coachInputBlocked || Time.frameCount <= coachInputResumeFrame) && (Event.current.isMouse || Event.current.isKey || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
             Styles();
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * UiScale);
             DrawWorldLabels();

@@ -92,6 +92,16 @@ class PlanValidationTests(unittest.TestCase):
         for bad in [action('reset'), action('sell'), action('shell', command='rm -rf /'), action('explore', 7, 6, url='https://example.com')]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([bad])), request_data())
 
+    def test_visual_diagnosis_repair_cannot_change_target_or_scope(self):
+        data = request_data()
+        data['goal'] = 'Select the extractor at (11, 7) and connect its south port to the colony shared power grid. Stop when simulation state confirms it is power-connected, or explain the blocker.'
+        data['state'].update(buildings=[mine(connected=False, rail_connected=False,
+                                             powerRoute={'possible':True,'cost':8})], deposits=[])
+        accepted = planner.parse_plan(json.dumps(plan([action('select',11,7), action('connect_conduit',11,7)])), data)
+        self.assertEqual([item['type'] for item in accepted['actions']], ['select','connect_conduit'])
+        for actions in [[action('connect_conduit',12,7)], [action('connect_rail',11,7)], [action('build_solar',11,7)]]:
+            with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan(actions)), data)
+
     def test_out_of_bounds_fractional_and_boolean_coordinates_rejected(self):
         for x, y in [(32, 5), (5, 32), (-1, 0), (1.5, 5), (True, 5)]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('explore', x, y)])), request_data())

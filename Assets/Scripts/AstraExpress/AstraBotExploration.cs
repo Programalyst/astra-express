@@ -66,7 +66,6 @@ namespace AstraExpress
             int initialRevision = Simulation.RevealRevision;
             float deadline = Time.realtimeSinceStartup + BotSurveySeconds;
             int steps = 0;
-            SetTool(Tool.Explore); selected = null; trainSelected = false;
             // Take ownership before any order, so Stop/global-off also cancels a
             // rover that was already moving when this explicitly started survey begins.
             botRoverOrder = true;
@@ -78,7 +77,6 @@ namespace AstraExpress
                 if (discovered.Count > 0)
                 {
                     var ore = discovered[0];
-                    CoachFocus($"{ore.X},{ore.Y}");
                     int fuel = BotVisibleDeposits(ResourceKind.Fluxite).Count(c => !knownFuel.Contains(c));
                     FinishBot(true, $"New Ore discovered at ({ore.X}, {ore.Y})." + (fuel > 0 ? $" Also discovered {fuel} Fluxite deposit(s), which are fuel, not saleable ore." : "") + " Inspect the fresh map before planning extraction.");
                     yield break;
@@ -93,8 +91,7 @@ namespace AstraExpress
                     FinishBot(true, "All currently reachable ground has been surveyed; no new Ore found. Existing deposits are not new discoveries."); yield break;
                 }
                 var destination = route[route.Count - 1];
-                botTarget = hover = destination;
-                CoachFocus($"{destination.X},{destination.Y}");
+                botTarget = destination;
                 botActionMessage = $"Auto-exploring toward ({destination.X}, {destination.Y}) · searching for new Ore";
                 // Issue only the next adjacent, already-revealed step. The ordinary
                 // rover pathfinder therefore cannot choose a hidden-terrain shortcut.
@@ -121,7 +118,6 @@ namespace AstraExpress
             if (finalOre.Count > 0)
             {
                 var ore = finalOre[0];
-                CoachFocus($"{ore.X},{ore.Y}");
                 FinishBot(true, $"New Ore discovered at ({ore.X}, {ore.Y}). Inspect the fresh map before planning extraction.");
                 yield break;
             }

@@ -1,5 +1,79 @@
 # AstraBot, the colony copilot
 
+## Action-first companion
+
+Live activity retains only its three newest messages. A successful goal (including
+an already-satisfied request) shows only “Goal complete.”, hides review controls,
+and closes after 2.2 seconds. Failure/blocker cards remain available. A new task
+invalidates the old completion timer. The persistent AstraBot avatar focuses the
+message input and remains below the drone berth even after dismissing the welcome
+menu; disabling Copilot hides both.
+
+### Passive scanning disabled
+
+The drone returns to a camera-relative berth beside the AstraBot UI when idle.
+Task planning triggers a 1.5-second spin-up and four-second curved departure,
+concurrent with inference; it waits in-world when a plan is ready for Start.
+Conversation-only replies keep it at the berth. Cancel/completion returns it,
+and Copilot Off hides it. The animation is presentation only and never grants
+action approval or adds artificial API latency. Input hint: “Ask anything, just say the word.”
+
+Passive model screen reads are disabled, including saved Live screen help opt-ins.
+Check my colony and the Live screen help control have been removed. The remaining
+three-second suggestion refresh reads local game state only and makes no model
+requests. Model calls are limited to submitted conversation and requested task
+planning/approved execution. Local guidance expands inside the same AstraBot card
+as suggestions, rather than opening a separate colony-copilot panel.
+The input starts at half desktop width, expands for drafts over 55 characters,
+and shrinks again when shortened or sent. Small screens use available width.
+This supersedes the historical automatic-screen-help descriptions below.
+
+### Conversation in the fixed bar
+
+Send (including Enter) lets the model route the message: questions, jokes and
+explanations get replies; action requests automatically prepare a goal for Start
+approval. Ambiguous requests get a clarifying question. Only a validated completed
+model response can hand off to planning; partial or failed streams cannot. The
+router uses structured reply/intent/goal output, not keyword matching.
+Follow-ups such as “just do it” delegate the most recent actionable advice, with
+its constraints carried into a self-contained planner goal. Thanks and unrelated
+jokes do not imply game actions; genuinely unclear references get clarification.
+Chat answers, jokes and follow-ups appear in a permanently open
+reply card above the input, not Live activity. The card receives actual final-answer
+text deltas from the hosted Agents event stream; it never displays reasoning or
+commentary. A completed-turn event confirms the final reply. Stop reply, Escape,
+tab hiding, credentials changes and Copilot Off cancel or discard pending replies.
+Eight recent user/assistant messages are retained in tab memory for follow-ups and
+cleared on colony/credential changes. Chat uses the configured fast model with
+discovered game state, no screenshot, no browsing and no execution tools. It does
+not claim model vision. API errors remain visible and never fall through to plans.
+The same origin/token/key handling and inference limits protect the chat endpoint.
+
+The fixed input above the bottom toolbar remains visible during coaching and
+execution. Enter or Send handles both conversation and task requests, never
+immediate execution. Start still approves the plan. While busy, players can draft the next message but
+cannot submit overlapping work. Copilot Off disables the input without erasing it.
+New sessions initially offer Start tutorial or Ask AstraBot.
+The welcome card disappears for the rest of the colony session after either
+choice; it is not replaced by a recurring suggestion menu. The fixed input stays
+available with “ask anything, I'll do it with you just say the word”.
+Automatic crosshairs are opt-in through Start tutorial; dismissing guidance ends guided mode so a new
+step cannot reopen it. Show me remains an explicit, temporary highlight.
+The service drone carries a small mint, camera-facing AstraBot face badge with
+visor, eyes and antenna; it is depth-tested world geometry, not a HUD bubble.
+
+During execution the player can pan, zoom, select, build and use the toolbar alongside AstraBot. Bot actions have independent targets and use the simulation's ordinary placement validation without changing the player's tool, route preview, selection or camera. Connections recheck current occupancy and credits at placement time. The rover remains shared: a manual move cancels the bot task, and AstraBot yields if a player movement order already exists. Pausing the colony stops the task until another review and Start.
+
+A small native 3D service drone uses the existing CC0 Kenney Space Kit `craft_miner.fbx`. It hovers beside the colony when idle, flies to revealed task targets, and uses a thin work beam on arrival. It shares scene lighting and depth, has no colliders, never moves the camera, and disappears when Copilot is off. Construction allows a bounded 1.4–5 second arrival beat based on travel distance. The build processor assigns the model in the build copy without overwriting the source scene. Current players suppress the old floating SVG, speech bubble and large task-target brackets; the DOM fallback remains for older players. **Live activity · expand** shows a bounded history of plan summaries, game-reported stages and confirmed results. **Open activity** expands the full Plan & Play panel during execution. The feed contains action explanations and status updates, not private chain-of-thought or token streaming from the model.
+
+Concurrent-control validation (14 September): 111 JavaScript tests, 79 Python tests, 41 bot-control assertions, 24 exploration assertions and the simulation suite passed. The control tests cover preserving the player's tool, selection and route preview through construction/Stop, plus manual rover priority. In a separate live Web tab, a survey completed with the embodied target and activity feed visible. A second, 20-second observation action remained running while the player selected Extractor; Stop stayed accessible with history expanded. These browser checks do not establish every possible simultaneous construction interaction.
+
+The persistent **Do a task →** button beside the robot opens the goal composer directly. The former question input has been removed; **Check my colony** in the coaching panel still requests a screen read. The task composer includes **Find/Discover ore**, **Build the rails**, and the existing construction presets.
+
+The companion offers a task from current discovered game facts: connect an unpowered building, add rails to a powered Ore mine, develop a buildable deposit, or survey for more Ore. Connection offers require a possible, affordable route. Offers stay quiet during tile picking, route placement, paused gameplay and active automation, and each can be dismissed. Clicking an offer prefills its goal and exact building/deposit target; it does not create or start a plan. These local suggestions do not trigger background model requests.
+
+Actual pending screen reads animate the existing SVG robot with a thinking sway and moving eyes. Planning and screen-slot waits show a small robot face and bouncing ellipsis, including in the minimized task dock. Completion, cancellation and errors clear the thinking state. Reduced-motion preferences disable these animations.
+
 The **Copilot On/Off** switch beside Pause turns the copilot on or off. Off hides its avatar, panel and highlights, cancels pending coaching, and stops new screen-reading requests. The choice is saved in this browser. Turning it on restores the avatar without opening the dialog.
 
 Run `Run Local.command`, open http://127.0.0.1:8090/, and click AstraBot in the bottom-left corner. The panel slides out without pausing the colony. Close it with ×, Escape, or the avatar. It never opens itself. “Show me” highlights the suggested tile and centres the camera if necessary; it does not construct anything or move a vehicle.
@@ -69,3 +143,21 @@ These initial results predate the Agents migration and fuel/fleet merge. Current
 - Browser verification covered translucent route tiles, dashed lines, numbered clickable ports, Show connection camera framing and panel collapse, Hide and Escape, and restoring the hint. The first marker kept credits at 350 and advanced the instruction; the second spent the displayed 12 credits, connected the mine, cleared the ghost, and showed POWER CONNECTED. A rail preview then displayed its separate 18-credit cost.
 - Hint dismissal and marker buttons suppress the corresponding world input frame, preventing a click from also moving the rover or starting a second route.
 - Web builds now use content hashes in asset filenames. This fixes an observed startup failure caused by reusing cached data with a rebuilt WASM binary; startup at the original local URL passed after this change.
+# Cooperative quick jobs
+
+The dock scans discovered game state every three seconds and offers up to three
+affordable jobs: connect power, build rails, place an Ore extractor, or discover
+Ore. These local suggestions prepare a single-action confirmation immediately;
+they do not call the model or start automatically. Start now is explicit approval.
+The offer is revalidated at Start, including freshness, rover ownership and cost.
+Unity remains authoritative and revalidates placement and routes before spending.
+Placing an extractor is intentionally only placement; subsequent scans offer its
+missing connections. Rail completion uses the simulation's existing idle-train
+assignment, never purchases a train. Each quick job stops on its first result,
+with no model replan, and a successful compact card closes after 2.2 seconds.
+
+Custom goals retain screenshot-aware planning. Their Start button is available
+in the compact dock; full steps and provenance are collapsed under Steps & details.
+Live activity remains expandable. Construction uses a 1.4-second arrival beat,
+1.2-second placement beat and 2-second connection preview; player input outside
+the panel remains available. Proactive scans do not send periodic model requests.

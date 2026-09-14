@@ -45,6 +45,9 @@ namespace AstraExpress
         public string Status => botActionStatus;
         public string ActionMessage => botActionMessage;
         public bool HasPreview => routeStart.HasValue;
+        public void ManualContext() { tool = Tool.Rail; routeStart = Simulation.Colony.Port; selected = Simulation.Colony; verticalFirst = true; }
+        public bool ManualContextKept => tool == Tool.Rail && routeStart.HasValue && routeStart.Value.Equals(Simulation.Colony.Port) && selected == Simulation.Colony && verticalFirst;
+        public void ManualRover(Cell target) { YieldBotRoverToPlayer(); Simulation.OrderRover(target); }
         public void Start(string type, Cell cell)
         {
             UnityEngine.JsonUtility.Value = new BotCommand { id = "test-" + (++commandCount), session = coachSession, type = type, x = cell.X, y = cell.Y };
@@ -94,6 +97,18 @@ class BotControlChecks
     static void Main()
     {
         var site = new Cell(8, 9);
+        var parallel = Game(); parallel.ManualContext();
+        parallel.Start("build_solar", site); parallel.Run();
+        Check(parallel.Status == "complete" && parallel.ManualContextKept, "Bot construction and wiring preserve player tool, selection, bend and route preview");
+        parallel.CoachBotStop("user");
+        Check(parallel.ManualContextKept, "Stopping the bot preserves the player's independent route preview");
+        var sharedRover = Game(); sharedRover.Start("explore", new Cell(10,6));
+        sharedRover.Until(() => sharedRover.ActionMessage.Contains("waiting for arrival"));
+        sharedRover.ManualRover(new Cell(8,6)); sharedRover.Run();
+        Check(sharedRover.Status == "cancelled" && sharedRover.Simulation.RoverMoving, "Manual rover order cancels only the bot order and keeps the player order moving");
+        var reserved = Game(); reserved.Simulation.OrderRover(new Cell(10,6));
+        reserved.Start("auto_explore", new Cell(0,0)); reserved.Run();
+        Check(reserved.Status == "cancelled" && reserved.Simulation.RoverMoving, "Bot yields when the player is already moving the rover");
         var game = Game();
         game.Start("build_solar", site);
         game.Until(() => ArrayAt(game, site) != null);

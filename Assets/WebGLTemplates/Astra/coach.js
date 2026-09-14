@@ -7,11 +7,11 @@
   root.innerHTML = `<section id="coach-panel" role="region" aria-label="AstraBot's coaching" inert>
     <header class="coach-header"><div><span class="coach-name">AstraBot</span><span class="coach-role">COLONY COPILOT</span></div><button id="coach-close" aria-label="Dismiss AstraBot">×</button></header>
     <div class="coach-body"><div class="coach-source" id="coach-source">Next step</div><div id="coach-provenance" hidden></div><p id="coach-sight" hidden></p><h2 id="coach-title">A little help, when you need it</h2><p id="coach-primary"></p><details id="coach-details"><summary>Why / details</summary><p id="coach-copy"></p><ul id="coach-steps"></ul></details>
-    </div><div class="coach-controls"><div class="coach-actions"><button id="coach-show">Show me</button><button id="coach-next">What next?</button></div>
-    <button id="coach-proactive" class="coach-proactive" hidden></button><button id="astrabot-task-open" class="coach-task">Give AstraBot a task</button>
-    <form id="coach-form"><input id="coach-question" aria-label="Ask AstraBot a question" maxlength="300" placeholder="Ask about your colony…" autocomplete="off"><button id="coach-ask" type="submit">Ask</button></form></div>
-    <footer class="coach-footer"><label><input type="checkbox" id="coach-live" checked> Live screen help</label><span id="coach-status" role="status">Connecting…</span></footer></section>
-    <button id="coach-launcher" aria-label="Open AstraBot, your colony copilot" aria-expanded="false" aria-controls="coach-panel">${avatar}<span class="coach-teaser"><strong>ASTRABOT · YOUR COPILOT</strong><span id="coach-teaser-text">Need a hand?</span></span></button>`;
+    </div><div class="coach-controls"><div class="coach-actions"><button id="coach-show">Show me</button></div>
+    <button id="coach-proactive" class="coach-proactive" hidden></button><button id="coach-ablation" class="coach-ablation" hidden>Compare without image</button><p id="coach-comparison" hidden></p><button id="astrabot-task-open" class="coach-task">Give AstraBot a task</button>
+    </div>
+    <footer class="coach-footer"><span id="coach-status" role="status">Local suggestions · no passive AI calls</span></footer></section>
+    <div class="coach-dock"><button id="coach-launcher" aria-label="Open AstraBot, your colony copilot" aria-expanded="false" aria-controls="coach-panel">${avatar}</button><div class="coach-teaser"><strong>ASTRABOT · LET’S BUILD</strong><span id="coach-teaser-text">What shall we do next?</span><div id="coach-thinking" role="status" hidden>Thinking <span class="astra-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="coach-dock-actions"><button id="coach-offer" hidden></button><button id="coach-task-quick">Do a task →</button><button id="coach-offer-dismiss" aria-label="Dismiss suggestion" hidden>×</button></div></div></div>`;
   document.body.append(root);
   const spot = document.createElement("div"); spot.id = "coach-spotlight"; spot.hidden = true;
   spot.innerHTML = '<svg class="coach-crosshair" viewBox="0 0 64 64" aria-hidden="true"><path class="coach-crosshair-shadow" d="M32 3v15M32 46v15M3 32h15M46 32h15"/><path class="coach-crosshair-arms" d="M32 3v15M32 46v15M3 32h15M46 32h15"/><circle cx="32" cy="32" r="6" fill="#061822"/><circle cx="32" cy="32" r="3" fill="#ffe4a3"/></svg><div class="coach-cue-hint"><span id="coach-cue-text" role="status"></span><button id="coach-cue-focus" hidden>Show target</button><button id="coach-cue-close" aria-label="Dismiss guidance">×</button></div>';
@@ -26,7 +26,6 @@
     label.textContent = caption; button.replaceChildren(art, label);
   }
   buttonArt("coach-close", "", "close"); buttonArt("coach-show", "Show me", "focus");
-  buttonArt("coach-next", "What next?", "ask"); buttonArt("coach-ask", "Ask", "ask");
   buttonArt("astrabot-task-open", "Give AstraBot a task", "play");
   const TASK_SUGGESTIONS = {
     "discover-ore": { label:"Send rover to survey", goal:"Send the rover on automatic exploration to uncover fog and discover a new Ore deposit. Stop safely once a new Ore deposit is revealed." },
@@ -43,13 +42,27 @@
   let configured = false, csrf = "", busy = false, lastRequest = 0, lastStateAt = 0, controller, pendingCapture;
   let lastVisionAt = 0, lastCaptureAt = 0, lastVisionSignature = "", highlight = null, highlightUntil = 0;
   let shownGuide = "", cueStage = "", dismissedCue = "", evidence = null;
-  let events = [], previousState, question = "", live = prefs.get("astra.coach.live", "1") === "1";
-  el("coach-live").checked = live;
+  let events = [], previousState, question = "", lastDiagnosticRequest = null;
+  // Passive model inference is disabled, including previously saved opt-ins.
+  const live = false;
+  let offer = null, dismissedOffer = "", offerSession = "";
+  let tutorialMode = false, intro = true;
+  const persistentAvatar = document.createElement("button");
+  persistentAvatar.id = "astrabot-avatar-home";
+  persistentAvatar.setAttribute("aria-label", "Talk to AstraBot");
+  persistentAvatar.innerHTML = avatar;
+  persistentAvatar.addEventListener("click", () => window.astraBotControl?.focusInput());
+  for (const name of ["pointerdown","pointerup","mousedown","mouseup","keydown","keyup"]) persistentAvatar.addEventListener(name, event => event.stopPropagation());
+  document.body.append(persistentAvatar);
+  root.append(el("coach-panel"));
+  root.querySelector(".coach-teaser strong").textContent = "AstraBot";
+  el("coach-launcher").setAttribute("aria-label", "Toggle AstraBot local guidance");
   function updateEnabledControl() {
     enableButton.setAttribute("aria-checked", String(enabled));
     enableButton.querySelector(".astrabot-toggle-state").textContent = enabled ? "On" : "Off";
     enableButton.title = enabled ? "Turn the colony copilot off" : "Turn the colony copilot on";
-    root.hidden = !enabled || !state || taskVisible();
+    root.hidden = !intro || !enabled || !state || taskVisible();
+    persistentAvatar.hidden = !enabled || !state;
   }
   function setEnabled(value) {
     enabled = !!value; prefs.set("astra.bot.enabled", enabled ? "1" : "0");
@@ -64,7 +77,7 @@
     enableButton.addEventListener(name, event => event.stopPropagation());
   updateEnabledControl();
   function send(method, value) { game?.SendMessage("Astra Express", method, value); }
-  function blockInput() { send("CoachSetInputBlocked", open && (root.matches(":hover") || root.contains(document.activeElement)) ? "1" : "0"); }
+  function blockInput() { send("CoachSetInputBlocked", !root.hidden && (root.matches(":hover") || root.contains(document.activeElement)) ? "1" : "0"); }
   root.addEventListener("pointerenter", blockInput); root.addEventListener("pointerleave", blockInput);
   root.addEventListener("focusin", blockInput); root.addEventListener("focusout", () => queueMicrotask(blockInput));
   // The DOM panel must not trigger Unity shortcuts, clicks, zoom, or camera pan underneath.
@@ -77,7 +90,7 @@
     if (value && el("astrabot-settings") && !el("astrabot-settings").hidden) return;
     open = value; root.dataset.open = String(value); el("coach-panel").inert = !value;
     el("coach-launcher").setAttribute("aria-expanded", String(value));
-    if (value) { if (current) render(current); csrf = ""; refreshConfig().then(() => maybeAsk(true)); }
+    if (value) { if (current) render(current); }
     else { contextVersion++; controller?.abort(); rejectCapture(); question = ""; clearEvidence(); if (!keepHighlight) dismissHighlight(); prefs.set("astra.coach.dismissed", "1"); el("unity-canvas").focus(); send("CoachSetInputBlocked", "2"); }
     blockInput();
   }
@@ -95,17 +108,57 @@
     if (!window.astraBotControl?.open) { status("Task controls are starting…"); return; }
     setOpen(false); window.astraBotControl.open();
   });
+  el("coach-task-quick").textContent = "Ask AstraBot";
+  el("coach-task-quick").addEventListener("click", () => { intro = false; setOpen(false); syncPresentation(); window.astraBotControl?.focusInput(); });
+  const tutorialButton = document.createElement("button"); tutorialButton.id = "coach-tutorial"; tutorialButton.textContent = "Start tutorial";
+  el("coach-task-quick").parentNode.insertBefore(tutorialButton, el("coach-task-quick"));
+  tutorialButton.addEventListener("click", () => { tutorialMode = !tutorialMode; intro = false; dismissedCue = ""; clearHighlight(); setOpen(false, true); syncPresentation(); });
+  window.addEventListener("astra:task-intent", () => { intro = false; tutorialMode = false; clearHighlight(); setOpen(false); });
+  let offers = [], scannedAt = 0;
+  const offerButtons = [el("coach-offer")];
+  for (let i = 1; i < 3; i++) {
+    const button = document.createElement("button"); button.hidden = true;
+    el("coach-offer").parentNode.insertBefore(button, el("coach-task-quick")); offerButtons.push(button);
+  }
+  offerButtons.forEach((button,index) => button.addEventListener("click", () => {
+    const latest = AstraCoachPolicy.suggestTasks(state).find(t => t.id === offers[index]?.id);
+    if (!enabled || !latest || !window.astraBotControl?.suggest) return;
+    setOpen(false); window.astraBotControl.suggest(latest.id);
+  }));
+  el("coach-offer-dismiss").addEventListener("click", () => { dismissedOffer = offer?.id || ""; updateOffer(); });
+  function updateOffer() {
+    if (offerSession !== state?.session) { offerSession = state?.session; dismissedOffer = ""; scannedAt = 0; }
+    if (Date.now()-scannedAt >= 3000) { offers = AstraCoachPolicy.suggestTasks(state); scannedAt = Date.now(); }
+    offer = offers.find(t => t.id !== dismissedOffer);
+    const visible = !intro && !!offer && offer.id !== dismissedOffer && !open && !busy && !cueBlocked();
+    tutorialButton.textContent = tutorialMode ? "End tutorial" : "Start tutorial";
+    el("coach-offer-dismiss").hidden = !visible;
+    offerButtons.forEach((button,index) => {
+      const task = offers[index]; button.hidden = !visible || !task || task.id === dismissedOffer;
+      button.textContent = task ? `${task.text} →` : "";
+    });
+    el("coach-teaser-text").textContent = intro ? "Take a tutorial, or tell me what you need." : visible ? "I can help with…" : "Here when you need me.";
+    root.dataset.thinking = String(busy);
+    el("coach-thinking").hidden = !busy;
+  }
   el("coach-proactive").addEventListener("click", () => {
-    const suggestion = TASK_SUGGESTIONS[current?.taskSuggestion];
+    const diagnostic = current?.visualDiagnosis;
+    const suggestion = diagnostic?.repairAvailable ? {goal:diagnostic.goal,target:diagnostic.target} : TASK_SUGGESTIONS[current?.taskSuggestion];
     if (!suggestion || !window.astraBotControl?.open) return;
-    setOpen(false); window.astraBotControl.open(suggestion.goal);
+    setOpen(false); window.astraBotControl.open(suggestion.goal, suggestion.target);
   });
-  el("coach-live").addEventListener("change", () => {
-    live = el("coach-live").checked; prefs.set("astra.coach.live", live ? "1" : "0"); contextVersion++;
-    if (!live) { controller?.abort(); rejectCapture(); render(candidates[0]); status("Screen reading off"); }
-    else { csrf = ""; refreshConfig().then(() => maybeAsk(true)); }
+  el("coach-ablation").addEventListener("click", async () => {
+    if (!lastDiagnosticRequest || busy || !csrf) return;
+    el("coach-ablation").disabled = true; status("Repeating the same turn without its image…");
+    try {
+      const response = await (window.astraBotAPI?.request || fetch)("/api/coach", {method:"POST", headers:{"Content-Type":"application/json","X-Astra-Coach":csrf}, body:JSON.stringify({...lastDiagnosticRequest,imageRemoved:true})});
+      const result = await response.json(); if (!response.ok) throw new Error(result.error || "Comparison unavailable");
+      el("coach-comparison").textContent = `IMAGE REMOVED · ${result.observation} · No target or repair was resolved.`;
+      el("coach-comparison").hidden = false; status("Image contribution compared");
+    } catch (error) { status(String(error.message).slice(0,95)); }
+    finally { el("coach-ablation").disabled = false; }
   });
-  function status(text) { el("coach-status").textContent = text; }
+  function status(text) { el("coach-status").textContent = text; updateOffer(); }
   function render(t, vision = false) {
     if (!t) return;
     const primary = t.primaryStep || t.cueLabel || t.steps?.[0] || t.title;
@@ -125,15 +178,18 @@
     const provenance = el("coach-provenance");
     provenance.textContent = astraVision ? `GPT-6 ASTRA · AGENTS API · IMAGE + GAME STATE · ${Math.round(t.durationMs || 0)} ms · frame ${((t.frameAgeMs || 0)/1000).toFixed(1)} s` : "";
     provenance.hidden = !astraVision;
-    const suggestion = astraVision && TASK_SUGGESTIONS[t.taskSuggestion];
+    const suggestion = astraVision && (t.visualDiagnosis?.repairAvailable ? {label:t.visualDiagnosis.label} : TASK_SUGGESTIONS[t.taskSuggestion]);
     el("coach-proactive").textContent = suggestion?.label || ""; el("coach-proactive").hidden = !suggestion;
+    const diagnosticReady = astraVision && t.visualDiagnosis?.status === "validated" && !!lastDiagnosticRequest;
+    el("coach-ablation").hidden = !diagnosticReady;
+    if (!diagnosticReady) { el("coach-comparison").hidden = true; el("coach-comparison").textContent = ""; }
     evidence = astraVision && t.visualEvidence?.visible ? { box:t.visualEvidence, grounding:t.grounding } : null;
     updateEvidenceBox();
     buttonArt("coach-show", "Show me", "focus");
     el("coach-show").hidden = !t.target && !t.uiTarget; el("coach-teaser-text").textContent = primary;
     if (changedAction) { el("coach-details").open = false; root.querySelector(".coach-body").scrollTop = 0; }
   }
-  function taskVisible() { const task = el("astrabot-task"); return !!task && !task.hidden; }
+  function taskVisible() { const task = el("astrabot-task"), reply = el("astrabot-reply"); return (!!task && !task.hidden) || (!!reply && !reply.hidden); }
   function cueBlocked() { return !enabled || document.hidden || (el("astrabot-settings") && !el("astrabot-settings").hidden) || taskVisible() || state?.pickingTile || state?.botBusy || window.astraBotControl?.active(); }
   function stageFor(cue) {
     return cue ? `${state?.session}:${state?.tool}:${state?.routeStart?.x},${state?.routeStart?.y}:${cue.id}:${cue.uiTarget || "world"}:${cue.target?.x},${cue.target?.y}` : "";
@@ -152,11 +208,12 @@
     el("coach-evidence-label").textContent = `ASTRA SAW · ${b.label}${grounding === "matched" ? " · GROUNDED" : " · CHECK"}`;
     evidenceBox.hidden = false;
   }
-  function dismissHighlight() { dismissedCue = cueStage || stageFor(candidates[0]); clearHighlight(); }
+  function dismissHighlight() { tutorialMode = false; dismissedCue = cueStage || stageFor(candidates[0]); clearHighlight(); updateOffer(); }
   function syncPresentation() {
     if (taskVisible() && open) setOpen(false);
-    root.hidden = !enabled || !state || taskVisible();
-    updateSpotlight(); updateEvidenceBox();
+    root.hidden = !intro || !enabled || !state || taskVisible();
+    persistentAvatar.hidden = !enabled || !state;
+    updateSpotlight(); updateEvidenceBox(); updateOffer();
   }
   function validRect(a) { return a && a.visible !== false && [a.x,a.y,a.width,a.height].every(Number.isFinite) && a.width > 0 && a.height > 0; }
   function toRect(a, canvas) { return {left:canvas.left + a.x * canvas.width, top:canvas.top + a.y * canvas.height, width:a.width * canvas.width, height:a.height * canvas.height}; }
@@ -203,7 +260,7 @@
     if (!cue) { clearHighlight(); return; }
     const stage = stageFor(cue);
     if (!highlight || highlight.automatic) {
-      if (!cue.autoCue || dismissedCue === stage) { clearHighlight(); return; }
+      if (!tutorialMode || !cue.autoCue || dismissedCue === stage) { clearHighlight(); return; }
       highlight = {id:cue.id,automatic:true};
     } else if (Date.now() > highlightUntil && stage === cueStage) { dismissHighlight(); return; }
     const progressed = stage !== cueStage;
@@ -267,8 +324,6 @@
     status(busy ? "Question queued · finishing this frame…" : "Question queued…");
     maybeAsk(true);
   }
-  el("coach-next").addEventListener("click", () => askQuestion("What should I do next, and how?"));
-  el("coach-form").addEventListener("submit", e => { e.preventDefault(); const input = el("coach-question"); if (!input.value.trim()) return; askQuestion(input.value.trim()); input.value = ""; });
   async function refreshConfig() {
     if (!enabled) return;
     try {
@@ -299,9 +354,10 @@
     try {
       const frame = await capture();
       if (!enabled || !open || !live || version !== contextVersion) return;
+      const requestBody = { image:frame.image, capturedAt:frame.capturedAt, state:sentState, candidates:allowed, events:events.slice(-8), question:asked, contextVersion:version };
       const response = await (window.astraBotAPI?.request || fetch)("/api/coach", { method:"POST", signal:requestController.signal,
         headers:{ "Content-Type":"application/json", "X-Astra-Coach":csrf },
-        body:JSON.stringify({ image:frame.image, capturedAt:frame.capturedAt, state:sentState, candidates:allowed, events:events.slice(-8), question:asked, contextVersion:version }) });
+        body:JSON.stringify(requestBody) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Vision temporarily unavailable");
       if (!enabled || !open || !live || document.hidden || version !== contextVersion || Date.now()-lastStateAt > 3000) return;
@@ -309,20 +365,21 @@
       const chosen = candidates.find(c => c.id === result.actionId);
       if (!chosen) return;
       // Model explains the screen; canonical game-validated steps remain exact.
+      lastDiagnosticRequest = result.visualDiagnosis?.status === "validated" ? requestBody : null;
       render({ ...chosen, title:result.title, body:result.body, observation:result.observation, taskSuggestion:result.taskSuggestion,
         visualEvidence:result.visualEvidence, grounding:result.grounding, model:result.model, modelRoute:result.modelRoute,
-        planSource:result.planSource, durationMs:result.durationMs, frameAgeMs:result.frameAgeMs }, true);
+        visualDiagnosis:result.visualDiagnosis, planSource:result.planSource, durationMs:result.durationMs, frameAgeMs:result.frameAgeMs }, true);
       if (question === asked) question = "";
       lastVisionAt = Date.now(); lastVisionSignature = signature;
       status("Just read your game screen");
     } catch(error) {
       if (version === contextVersion && open && live) {
         render(candidates[0]);
-        if (asked && question === asked) { if (!el("coach-question").value) el("coach-question").value = asked; question = ""; }
+        if (asked && question === asked) question = "";
         status(error.name === "AbortError" ? "Vision timed out · game tip shown" : String(error.message).slice(0,95));
       }
     } finally {
-      clearTimeout(timeout); busy = false; if (controller === requestController) controller = null;
+      clearTimeout(timeout); busy = false; updateOffer(); if (controller === requestController) controller = null;
       if (open && live && version !== contextVersion) status(question ? "Colony changed · refreshing your answer…" : "Colony changed · current game tip shown");
       if (question) maybeAsk(true);
     }
@@ -337,7 +394,7 @@
     ready(instance) { game = instance; refreshConfig(); },
     receive(next) {
       const changedSession = state && next.session !== state.session;
-      if (changedSession) { events = []; previousState = null; contextVersion++; controller?.abort(); lastVisionSignature = ""; lastVisionAt = 0; dismissedCue = ""; clearHighlight(); }
+      if (changedSession) { events = []; previousState = null; contextVersion++; controller?.abort(); lastVisionSignature = ""; lastVisionAt = 0; dismissedCue = ""; tutorialMode = false; intro = true; clearHighlight(); }
       if (previousState && (next.message !== previousState.message || next.tool !== previousState.tool || next.deliveries !== previousState.deliveries))
         events.push({ at:Math.round(next.elapsed), tool:next.tool, message:next.message, credits:next.credits, deliveries:next.deliveries });
       events = events.slice(-8); previousState = next; state = next; lastStateAt = Date.now();
@@ -345,7 +402,7 @@
       candidates = AstraCoachPolicy.advise(next); const key = AstraCoachPolicy.signature(next, candidates);
       if (key !== fingerprint) { fingerprint = key; contextVersion++; render(candidates[0]); }
       document.documentElement.style.setProperty("--game-scale", Math.min(innerWidth/1280, innerHeight/720));
-      syncPresentation(); maybeAsk();
+      syncPresentation();
     },
     screenReady(id, jpeg) {
       if (!pendingCapture || pendingCapture.id !== id) return;
@@ -358,6 +415,6 @@
   };
   document.addEventListener("visibilitychange", () => { if (document.hidden) { contextVersion++; controller?.abort(); rejectCapture(); } });
   window.addEventListener("resize", () => { updateSpotlight(); updateEvidenceBox(); });
-  setInterval(() => { if (open && !document.hidden) maybeAsk(); syncPresentation(); }, 1000);
+  setInterval(syncPresentation, 1000);
   setInterval(() => { if (!document.hidden) refreshConfig(); }, 15000);
 })();

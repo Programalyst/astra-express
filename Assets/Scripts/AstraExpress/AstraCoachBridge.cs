@@ -107,7 +107,7 @@ namespace AstraExpress
         {
             public string session, tool, message, selectedKind, trainPhase, placementReason;
             public string botActionId, botActionStatus, botActionMessage;
-            public bool botBusy, pickingTile, hasPickedTile, smartRouting = true;
+            public bool botBusy, pickingTile, hasPickedTile, nativeCompanion, smartRouting = true;
             public CoachPoint pickedTile, botTarget;
             public CoachPoint[] connectionTargets;
             public CoachAnchor[] uiAnchors, uiPanels;
@@ -253,7 +253,7 @@ namespace AstraExpress
             var currentTrain = Simulation.Trains[trainIndex];
             var currentDestination = CoachFuelDestination(selected);
             var state = new CoachState {
-                session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(),
+                session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(), nativeCompanion = AstraBotModel != null,
                 connectionTargets = networkPortOptions.Where(b => !routeStart.HasValue || !b.Port.Equals(routeStart.Value)).OrderBy(b => b.Starter ? 0 : 1).Select(b => CoachPosition(b.Port)).ToArray(),
                 botActionId = botActionId, botActionStatus = botActionStatus, botActionMessage = botActionMessage, botBusy = botBusy, pickingTile = pickingTile, hasPickedTile = pickedTile.HasValue,
                 pickedTile = pickedTile.HasValue ? CoachPosition(pickedTile.Value) : null,

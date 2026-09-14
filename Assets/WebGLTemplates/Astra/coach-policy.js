@@ -276,7 +276,41 @@
         ...[b.powerRoute,b.railRoute,b.destinationRailRoute].map(r => r && [r.possible,r.cost,r.nextSegment,(r.stops || []).map(p => [p.x,p.y])])]),
       options.map(o => [o.id,o.steps,o.target?.x,o.target?.y,o.uiTarget,o.autoCue]), s.placementReason]);
   }
-  const api = { advise, signature };
+  // Offers use discovered game facts only. They prefill goals; the planner still
+  // checks routes and budgets, and the player must review and start each task.
+  function suggestTask(s) {
+    if (!s || s.paused || s.botBusy || s.pickingTile || s.routeStarted) return null;
+    const make = (id, text, label, goal, target) => ({id,text,label,goal,target});
+    const buildings = s.buildings || [];
+    const selected = buildings.find(b => same(b.origin, s.selected));
+    const ordered = selected ? [selected, ...buildings.filter(b => b !== selected)] : buildings;
+    const disconnected = ordered.find(b => !b.paused && b.connected === false && b.powerRoute?.possible && b.powerRoute.cost <= s.credits);
+    if (disconnected) return make(`power-${disconnected.origin.x}-${disconnected.origin.y}`, "This building needs power. Want me to connect it?", "Connect power", "Connect the selected building to the colony power grid. Verify the connection. Do not add other buildings or rails.", disconnected.origin);
+    const mine = ordered.find(b => b.kind === "Extractor" && !isFuel(b) && !b.paused && b.connected && b.railConnected === false && b.railRoute?.possible && b.railRoute.cost <= s.credits);
+    if (mine) return make(`rails-${mine.origin.x}-${mine.origin.y}`, "I can help build the rails for this mine.", "Build the rails", "Connect this Ore extractor to the colony by rail. Use an idle train if available. Do not buy trains or reassign active or manually parked services.", mine.origin);
+    const deposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && d.cost <= s.credits);
+    if (deposit) return make(`mine-${deposit.origin.x}-${deposit.origin.y}`, "We found ore. Shall I plan a working mine?", "Build an ore mine", "Build an Ore extractor on this revealed deposit, connect power and rails to the colony within available credits. Do not buy a locomotive.", deposit.origin);
+    if (s.frontier && !s.roverMoving && s.battery > 15) return make("discover-ore", "Want to find more ore? I can send the rover.", "Find more ore", "Send the rover on automatic exploration to uncover fog and discover a new Ore deposit. Stop safely once a new Ore deposit is revealed.");
+    return null;
+  }
+  // Small, independently approved jobs. No model call or hidden-world lookup.
+  function suggestTasks(s) {
+    if (!s || s.paused || s.botBusy || s.pickingTile || s.routeStarted) return [];
+    const tasks = [];
+    const add = (id, label, type, target, cost = 0) => tasks.push({id,label,target,cost,
+      goal:label, text: cost ? `${label} · ${cost} credits` : label,
+      action:{type,...(target ? {x:target.x,y:target.y} : {}),reason:label}});
+    const buildings = [...(s.buildings || [])].sort((a,b) => Number(same(b.origin,s.selected))-Number(same(a.origin,s.selected)));
+    const power = buildings.find(b => !b.paused && b.connected === false && b.powerRoute?.possible && Number.isFinite(b.powerRoute.cost) && b.powerRoute.cost <= s.credits);
+    if (power) add(`power-${power.origin.x}-${power.origin.y}`, "Connect power", "connect_conduit", power.origin, power.powerRoute.cost);
+    const mine = buildings.find(b => b.kind === "Extractor" && !isFuel(b) && !b.paused && b.connected && b.railConnected === false && b.railRoute?.possible && Number.isFinite(b.railRoute.cost) && b.railRoute.cost <= s.credits);
+    if (mine) add(`rails-${mine.origin.x}-${mine.origin.y}`, "Build rails", "connect_rail", mine.origin, mine.railRoute.cost);
+    const deposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && Number.isFinite(d.cost) && d.cost <= s.credits);
+    if (deposit) add(`mine-${deposit.origin.x}-${deposit.origin.y}`, "Place ore extractor", "build_extractor", deposit.origin, deposit.cost);
+    if (s.frontier && !s.roverMoving && s.battery > 15) add("discover-ore", "Find more ore", "auto_explore");
+    return tasks.slice(0,3);
+  }
+  const api = { advise, signature, suggestTask, suggestTasks };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.AstraCoachPolicy = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
