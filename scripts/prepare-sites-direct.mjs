@@ -49,6 +49,10 @@ copyFileSync(join(build, config.loader), join(destination, config.loader));
 copyFileSync(join(build, config.framework), join(destination, config.framework));
 const versionedAssets = new Map();
 function versionAsset(filename, source) {
+  if (process.argv.includes("--direct-api") && filename === "astrabot-api.js") source = join(repository, "scripts", "sites-direct-api.js");
+  if (process.argv.includes("--direct-api") && filename === "astrabot-settings.js") source = join(repository, "scripts", "sites-direct-settings.js");
+  if (process.argv.includes("--local-hints-only") && filename === "astrabot-api.js") source = join(repository, "scripts", "sites-local-hints.js");
+  if (process.argv.includes("--local-hints-only") && filename === "astrabot-settings.js") source = join(repository, "scripts", "sites-local-settings.js");
   const bytes = readFileSync(source);
   const versioned = filename.replace(/\.(js|css|jpg)$/, `.${hash(bytes).slice(0, 16)}.$1`);
   writeFileSync(join(destination, versioned), bytes);

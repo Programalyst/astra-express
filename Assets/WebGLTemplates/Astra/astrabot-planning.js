@@ -3,7 +3,7 @@
   const contract = window.astraBotContract;
   const goals = new Map();
   const requireValid = (condition, message) => { if (!condition) throw new Error(message); };
-  const point = value => value && Number.isInteger(value.x) && Number.isInteger(value.y) && value.x >= 0 && value.x < 28 && value.y >= 0 && value.y < 22 ? `${value.x},${value.y}` : null;
+  const point = value => value && Number.isInteger(value.x) && Number.isInteger(value.y) && value.x >= 0 && value.x < 32 && value.y >= 0 && value.y < 32 ? `${value.x},${value.y}` : null;
   const textWithin = (value, maximum, minimum = 1) => typeof value === "string" && value.length >= minimum && value.length <= maximum;
   function matches(value, schema) {
     if (schema.anyOf) return schema.anyOf.some(branch => matches(value, branch));
