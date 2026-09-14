@@ -115,6 +115,7 @@ public static class AstraExpressEditor
         game.ExtractorModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/SM_Prop_Drill_03.prefab");
         game.PowerPlantModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/SM_Prop_PowerGenerator_01.prefab");
         game.OreModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Orefield.prefab");
+        game.DecorativeRockModel = LoadModel("Assets/Kenny/rock_largeA_var1.prefab");
         game.FluxiteModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Single Crystal.prefab");
         game.TrainModel = LoadModel(SpaceRoot + "monorail_trainFront.fbx");
         game.TerrainModel = LoadModel(SpaceRoot + "terrain.fbx");

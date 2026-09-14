@@ -16,6 +16,7 @@ namespace AstraExpress
         public GameObject ExtractorModel;
         public GameObject PowerPlantModel;
         public GameObject OreModel;
+        public GameObject DecorativeRockModel;
         public GameObject FluxiteModel;
         public GameObject TrainModel;
         public GameObject TerrainModel;
@@ -37,6 +38,7 @@ namespace AstraExpress
         private readonly Dictionary<Cell, GroundTile> ground = new Dictionary<Cell, GroundTile>();
         private readonly Dictionary<Collider, Cell> terrainColliders = new Dictionary<Collider, Cell>();
         private readonly Dictionary<Cell, GameObject> ore = new Dictionary<Cell, GameObject>();
+        private readonly Dictionary<Cell, GameObject> decorativeRocks = new Dictionary<Cell, GameObject>();
         private readonly Dictionary<Structure, Transform> buildings = new Dictionary<Structure, Transform>();
         private readonly Dictionary<Structure, Animator[]> extractorAnimators = new Dictionary<Structure, Animator[]>();
         private readonly Dictionary<Material, Material> converted = new Dictionary<Material, Material>();
@@ -163,7 +165,7 @@ namespace AstraExpress
             ResetLinkGuide();
             if (worldRoot != null) Destroy(worldRoot.gameObject);
             worldRoot = new GameObject("Colony world").transform;
-            ground.Clear(); terrainColliders.Clear(); ore.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
+            ground.Clear(); terrainColliders.Clear(); ore.Clear(); decorativeRocks.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
             extractorAnimators.Clear();
             selected = null; trainSelected = false; routeStart = null; tool = Tool.Explore;
             fuelDestination = null; selectedTrainIndex = 0; confirmRestart = false;
@@ -194,6 +196,19 @@ namespace AstraExpress
                         foreach (var renderer in cluster.GetComponentsInChildren<Renderer>()) renderer.sharedMaterial = fuelMaterial;
                     ore[cell] = cluster;
                 }
+            if (DecorativeRockModel != null)
+            {
+                var random = new System.Random(84213);
+                foreach (var cell in Simulation.DecorativeRockCells())
+                {
+                    float width = 0.65f + (float)random.NextDouble() * 0.45f;
+                    var rock = Model(DecorativeRockModel, "Decorative rock " + cell, worldRoot, Position(cell, 0), width, width * 0.65f, preserveMaterials: true, fitToBounds: false);
+                    rock.transform.localScale *= width;
+                    rock.transform.Rotate(0, (float)random.NextDouble() * 360, 0);
+                    rock.SetActive(false);
+                    decorativeRocks[cell] = rock;
+                }
+            }
             roverVisual = Model(RoverModel, "Rover 01", worldRoot, Position(7, 6, 0.08f), 1.7f, 1.1f, true).transform;
             var previewObject = new GameObject("Placement preview");
             previewObject.transform.SetParent(worldRoot);
@@ -269,7 +284,7 @@ namespace AstraExpress
             TerrainKind kind = Simulation.Terrain.Kind(cell);
             var prefab = Simulation.Terrain.IsCorner(cell) ? HillsideCornerModel : kind == TerrainKind.Ramp ? RampModel : HillsideModel;
             float baseHeight = Simulation.Terrain.Elevation(cell) * TerrainGrid.LevelHeight;
-            var tile = Model(prefab, kind + " terrain " + cell, worldRoot, new Vector3(cell.X * 2, baseHeight - 0.02f, cell.Y * 2), 2, TerrainGrid.LevelHeight);
+            var tile = Model(prefab, kind + " terrain " + cell, worldRoot, new Vector3(cell.X * 2, baseHeight - 0.02f, cell.Y * 2), 2, TerrainGrid.LevelHeight, preserveMaterials: true);
             var renderers = tile.GetComponentsInChildren<Renderer>();
             var bounds = renderers[0].bounds;
             foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
@@ -350,6 +365,9 @@ namespace AstraExpress
 
         private void SyncWorld()
         {
+            foreach (var pair in decorativeRocks)
+                pair.Value.SetActive(Simulation.IsRevealed(pair.Key) && Simulation.StructureAt(pair.Key) == null
+                    && !Simulation.Rails.Contains(pair.Key) && !Simulation.Conduits.Contains(pair.Key));
             if (Simulation.RevealRevision != revealRevision)
             {
                 revealRevision = Simulation.RevealRevision;

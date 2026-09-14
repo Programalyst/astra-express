@@ -305,6 +305,19 @@ class Review
     static void Main()
     {
         var layout = new ColonySimulation();
+        var rocks = layout.DecorativeRockCells();
+        Check(rocks.Count == 24 && rocks.SequenceEqual(layout.DecorativeRockCells()), "Sparse rock layout is deterministic");
+        foreach (var rock in rocks)
+        {
+            for (int offsetX = -1; offsetX <= 1; offsetX++)
+                for (int offsetY = -1; offsetY <= 1; offsetY++)
+                {
+                    var neighbor = new Cell(rock.X + offsetX, rock.Y + offsetY);
+                    Check(layout.Terrain.Kind(neighbor) == TerrainKind.Flat && layout.DepositAt(neighbor) == null && layout.StructureAt(neighbor) == null, "Rocks leave clearance around cliffs, ramps, deposits and starter buildings");
+                }
+            Check(rocks.All(other => other.Equals(rock) || Math.Abs(other.X - rock.X) > 2 || Math.Abs(other.Y - rock.Y) > 2), "Decorative rocks remain spaced apart");
+        }
+        Check(rocks.Any(cell => layout.Terrain.Elevation(cell) == 1) && rocks.Any(cell => layout.Terrain.Elevation(cell) == 0), "Rocks decorate both elevations");
         Check(layout.DepositAt(new Cell(13, 3)) == null, "Previous nearby ore location is empty");
         Check(layout.DepositAt(new Cell(10, 4))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(10, 4))?.Size == 1, "Nearby ore is a 1x1 patch at (10, 4)");
         Check(layout.DepositAt(new Cell(13, 8))?.Resource == ResourceKind.Fluxite && layout.DepositAt(new Cell(13, 8))?.Size == 1, "Small Fluxite moves to the former nearby ore site");

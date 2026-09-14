@@ -141,6 +141,40 @@ namespace AstraExpress
 
         public static bool InBounds(Cell cell) => cell.X >= 0 && cell.Y >= 0 && cell.X < Width && cell.Y < Height;
         public bool IsRevealed(Cell cell) => InBounds(cell) && Revealed[cell.X, cell.Y];
+        public List<Cell> DecorativeRockCells()
+        {
+            var random = new Random(73421);
+            var candidates = new List<Cell>();
+            for (int column = 2; column < Width - 2; column++)
+                for (int row = 2; row < Height - 2; row++)
+                {
+                    var cell = new Cell(column, row);
+                    bool clear = true;
+                    for (int offsetX = -1; offsetX <= 1; offsetX++)
+                        for (int offsetY = -1; offsetY <= 1; offsetY++)
+                        {
+                            var neighbor = new Cell(column + offsetX, row + offsetY);
+                            if (Terrain.Kind(neighbor) != TerrainKind.Flat || DepositAt(neighbor) != null
+                                || StructureAt(neighbor) != null || neighbor.Equals(RoverCell)) clear = false;
+                        }
+                    if (clear) candidates.Add(cell);
+                }
+            for (int index = candidates.Count - 1; index > 0; index--)
+            {
+                int other = random.Next(index + 1);
+                var previous = candidates[index];
+                candidates[index] = candidates[other];
+                candidates[other] = previous;
+            }
+            var rocks = new List<Cell>();
+            foreach (var cell in candidates)
+            {
+                if (rocks.Any(other => Math.Abs(other.X - cell.X) <= 2 && Math.Abs(other.Y - cell.Y) <= 2)) continue;
+                rocks.Add(cell);
+                if (rocks.Count == 24) break;
+            }
+            return rocks;
+        }
         public Structure StructureAt(Cell cell) => Structures.FirstOrDefault(structure => structure.Contains(cell));
         public Deposit DepositAt(Cell cell) => Deposits.FirstOrDefault(deposit => deposit.Contains(cell));
         public bool FullyRevealed(Deposit deposit) => Footprint(deposit.Origin, deposit.Size).All(IsRevealed);
