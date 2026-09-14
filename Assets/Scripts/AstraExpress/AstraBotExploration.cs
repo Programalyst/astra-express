@@ -100,6 +100,7 @@ namespace AstraExpress
                 {
                     FinishBot(false, "Survey route changed or is blocked. Inspect the latest map before retrying."); yield break;
                 }
+                FollowBotRoverMove(destination);
                 steps++;
                 while (Simulation.RoverMoving && botBusy && Time.realtimeSinceStartup < deadline)
                 {

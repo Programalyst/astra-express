@@ -325,7 +325,6 @@ namespace AstraExpress
             UpdateLinkGuide();
             UpdateNetworkPlacement();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
-            UpdateAstraBotVisual();
             foreach (var train in Simulation.Trains)
             {
                 MoveVisual(trainVisuals[train], Position(train.X, train.Y, 0.24f));
@@ -349,9 +348,16 @@ namespace AstraExpress
 
         private void LateUpdate()
         {
-            if (Simulation == null || !followRover) return;
-            cameraTarget = Vector3.SmoothDamp(cameraTarget, Position(Simulation.RoverX, Simulation.RoverY), ref cameraVelocity, 0.22f, Mathf.Infinity, Time.unscaledDeltaTime);
-            PositionCamera();
+            if (Simulation == null) return;
+            if (followRover)
+            {
+                cameraTarget = Vector3.SmoothDamp(cameraTarget, Position(Simulation.RoverX, Simulation.RoverY), ref cameraVelocity, 0.22f, Mathf.Infinity, Time.unscaledDeltaTime);
+                PositionCamera();
+            }
+            // Screen-docked presentation must run after the camera reaches its final
+            // pose for this frame. Updating before camera follow made the drone chase
+            // the UI berth by one frame and look like it was colliding with the dock.
+            UpdateAstraBotVisual();
         }
 
         private void MoveVisual(Transform visual, Vector3 position)
@@ -575,6 +581,18 @@ namespace AstraExpress
             if (next != Tool.Explore) StopFollowingRover();
         }
         private void StopFollowingRover() { followRover = false; cameraVelocity = Vector3.zero; }
+        private void FollowBotRoverMove(Cell destination)
+        {
+            // Keep player framing when the complete move already fits. If AstraBot
+            // sends the shared rover out of view, smoothly follow it until the player
+            // pans again instead of letting the action disappear off-screen.
+            Vector3 roverView = worldCamera.WorldToViewportPoint(Position(Simulation.RoverX, Simulation.RoverY));
+            Vector3 destinationView = worldCamera.WorldToViewportPoint(Position(destination));
+            bool Fits(Vector3 point) => point.z > 0 && point.x >= 0.08f && point.x <= 0.92f && point.y >= 0.22f && point.y <= 0.9f;
+            if (Fits(roverView) && Fits(destinationView)) return;
+            followRover = true;
+            cameraVelocity = Vector3.zero;
+        }
         private void PositionCamera() => worldCamera.transform.position = cameraTarget - worldCamera.transform.forward * 48;
         private void CenterColony() { StopFollowingRover(); cameraTarget = Position(7, 8); PositionCamera(); }
         private void CenterRover() { followRover = true; cameraVelocity = Vector3.zero; cameraTarget = Position(Simulation.RoverX, Simulation.RoverY); PositionCamera(); }

@@ -49,6 +49,7 @@
   let tutorialMode = false, intro = true;
   const persistentAvatar = document.createElement("button");
   persistentAvatar.id = "astrabot-avatar-home";
+  persistentAvatar.type = "button";
   persistentAvatar.setAttribute("aria-label", "Talk to AstraBot");
   persistentAvatar.innerHTML = avatar;
   persistentAvatar.addEventListener("click", () => window.astraBotControl?.focusInput());
@@ -62,7 +63,7 @@
     enableButton.querySelector(".astrabot-toggle-state").textContent = enabled ? "On" : "Off";
     enableButton.title = enabled ? "Turn the colony copilot off" : "Turn the colony copilot on";
     root.hidden = !intro || !enabled || !state || taskVisible();
-    persistentAvatar.hidden = !enabled || !state;
+    persistentAvatar.hidden = intro || !enabled || !state;
   }
   function setEnabled(value) {
     enabled = !!value; prefs.set("astra.bot.enabled", enabled ? "1" : "0");
@@ -212,7 +213,7 @@
   function syncPresentation() {
     if (taskVisible() && open) setOpen(false);
     root.hidden = !intro || !enabled || !state || taskVisible();
-    persistentAvatar.hidden = !enabled || !state;
+    persistentAvatar.hidden = intro || !enabled || !state;
     updateSpotlight(); updateEvidenceBox(); updateOffer();
   }
   function validRect(a) { return a && a.visible !== false && [a.x,a.y,a.width,a.height].every(Number.isFinite) && a.width > 0 && a.height > 0; }

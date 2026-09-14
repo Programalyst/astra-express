@@ -12,21 +12,32 @@
     <button id="bot-plan" type="submit">Create plan</button></form></div>
     <div id="bot-plan-body"><h3 id="bot-title">Your next colony project</h3><details id="bot-plan-details"><summary>Steps & details</summary><p id="bot-model" hidden></p><p id="bot-summary">Plans use your current game screen and discovered terrain.</p><ol id="bot-actions"></ol><p id="bot-check"></p></details></div>
     <div id="bot-thinking" role="status" hidden><span class="bot-thinking-face" aria-hidden="true">•ᴗ•</span><span>Thinking <span class="astra-dots" aria-hidden="true"><i></i><i></i><i></i></span></span></div><p id="bot-status" role="status">I’ll show you the plan before starting. Stop or Escape returns control.</p><p id="bot-progress" aria-label="Expansion progress" hidden></p>
-    <details id="bot-activity" open><summary id="bot-activity-toggle">Live activity · minimize</summary><p class="bot-activity-note">Action explanations and game updates</p><ol id="bot-timeline" aria-label="AstraBot activity history"></ol></details>
+    <details id="bot-activity"><summary id="bot-activity-toggle">Live activity · expand</summary><p class="bot-activity-note">Action explanations and game updates</p><ol id="bot-timeline" aria-label="AstraBot activity history"></ol></details>
     <footer><button id="bot-start" hidden>Start plan</button><button id="bot-stop" hidden>Stop</button><button id="bot-expand" hidden>Open task</button><button id="bot-edit" hidden>Edit goal</button></footer>
     <small class="bot-scope">Game controls only · 1 rover · 1 depot · up to 4 trains</small>`;
   document.body.append(panel);
-  document.getElementById("bot-activity").open = true;
+  document.getElementById("bot-activity").open = false;
   document.getElementById("bot-activity").addEventListener("toggle", () => {
     document.getElementById("bot-activity-toggle").textContent = document.getElementById("bot-activity").open ? "Live activity · minimize" : "Live activity · expand";
   });
   const commandBar = document.createElement("form"); commandBar.id = "astrabot-commandbar";
   commandBar.setAttribute("aria-label", "Ask AstraBot to do a task");
-  commandBar.innerHTML = `<label for="bot-command-input">AstraBot</label><input id="bot-command-input" maxlength="600" autocomplete="off" placeholder="Ask anything, just say the word." aria-label="Message AstraBot"><button id="bot-command-send" type="submit">Send</button>`;
+  commandBar.innerHTML = `<label for="bot-command-input">AstraBot</label><input id="bot-command-input" maxlength="600" autocomplete="off" placeholder="Ask anything, just say the word." aria-label="Message AstraBot"><button id="bot-command-task" type="button" aria-label="Create action plan">Action</button><button id="bot-command-send" type="submit">Ask</button><span id="bot-drone-dock"></span>`;
   document.body.append(commandBar);
+  const avatarHome = document.getElementById("astrabot-avatar-home");
+  if (avatarHome) document.getElementById("bot-drone-dock").append(avatarHome);
+  let companionDockRefreshTimer = 0;
   function sizeCommandBar() {
-    commandBar.dataset.long = String(el("bot-command-input").value.length > 55);
+    const nextLong = String(el("bot-command-input").value.length > 55);
+    const resizing = commandBar.dataset.long !== nextLong;
+    commandBar.dataset.long = nextLong;
+    clearTimeout(companionDockRefreshTimer);
+    if (!resizing) updateCompanionDock();
+    else companionDockRefreshTimer = setTimeout(updateCompanionDock, 220);
   }
+  commandBar.addEventListener("transitionend", event => {
+    if (event.propertyName === "width") updateCompanionDock();
+  });
   document.getElementById("bot-command-input").addEventListener("input", sizeCommandBar);
   const replyCard = document.createElement("section"); replyCard.id = "astrabot-reply"; replyCard.hidden = true;
   replyCard.setAttribute("aria-label", "AstraBot conversation");
@@ -42,10 +53,19 @@
   let checkpoint = null, enabled = true, editing = true, reviewReady = false, suggestedTile = null;
   let currentAction = null, activity = [], lastActivity = "";
   let quickTask = null;
-  let companionMode = "";
+  let companionMode = "", companionReturning = false;
   let chatBusy = false, chatController = null, chatVersion = 0, chatHistory = [];
   const send = (method, value) => game?.SendMessage("Astra Express", method, value);
-  function syncThinking() { el("bot-thinking").hidden = !planning; panel.dataset.thinking = String(planning); el("bot-plan").textContent = planning ? "Planning…" : "Create plan"; el("bot-command-send").disabled = !enabled || running || planning || chatBusy; el("bot-command-input").disabled = !enabled; el("bot-command-input").placeholder = !enabled ? "Turn Copilot on to ask AstraBot" : "Ask anything, just say the word."; }
+  function updateCompanionDock() {
+    const dock = el("bot-drone-dock"), canvas = el("unity-canvas");
+    if (!game || !dock?.getBoundingClientRect || !canvas?.getBoundingClientRect) return;
+    const d = dock.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+    if (!c.width || !c.height) return;
+    const x = Math.round(Math.max(0,Math.min(1,(d.left+d.width/2-c.left)/c.width))*1000);
+    const y = Math.round(Math.max(0,Math.min(1,1-(d.top+d.height/2-c.top)/c.height))*1000);
+    send("CoachSetCompanionDock", `${x},${y}`);
+  }
+  function syncThinking() { el("bot-thinking").hidden = !planning; panel.dataset.thinking = String(planning); el("bot-plan").textContent = planning ? "Planning…" : "Create plan"; const commandBusy = !enabled || running || planning || chatBusy; el("bot-command-task").disabled = commandBusy; el("bot-command-send").disabled = commandBusy; el("bot-command-input").disabled = !enabled; el("bot-command-input").placeholder = !enabled ? "Turn Copilot on to ask AstraBot" : "Ask anything, just say the word."; }
   function recordActivity(text, kind = "update") {
     if (!text || text === lastActivity) return;
     lastActivity = text;
@@ -56,7 +76,8 @@
   }
   const message = value => { el("bot-status").textContent = value; recordActivity(value, planning ? "planning" : running ? "action" : "update"); syncThinking(); };
   function updateEmbodied() {
-    const mode = !enabled || document.hidden ? "off" : planning ? "launching" : chatBusy ? "thinking" : running ? "working" : reviewReady ? "ready" : "idle";
+    const waitingInWorld = !!plan && plan.status !== "complete" && !editing;
+    const mode = !enabled || document.hidden ? "off" : companionReturning ? "returning" : planning ? (running ? "thinking" : "launching") : running ? "working" : chatBusy ? "thinking" : reviewReady || waitingInWorld ? "ready" : "idle";
     if (game && companionMode !== mode) { companionMode = mode; send("CoachSetCompanionMode", mode); }
     // Current players render the companion inside Unity, with depth and lighting.
     // Keep the DOM fallback only for older players without this capability.
@@ -123,6 +144,17 @@
     window.dispatchEvent?.(new CustomEvent("astra:task-intent"));
     await converse(text);
   };
+  el("bot-command-task").onclick = async () => {
+    const text = el("bot-command-input").value.trim();
+    if (!text) { el("bot-command-input").focus(); return; }
+    if (!enabled || running || planning || chatBusy) return;
+    window.dispatchEvent?.(new CustomEvent("astra:task-intent"));
+    replyCard.hidden = true;
+    el("bot-goal").value = text;
+    el("bot-command-input").value = "";
+    sizeCommandBar();
+    await el("bot-goal-form").onsubmit({preventDefault(){}});
+  };
   function stopChat() {
     chatVersion++; chatController?.abort(); chatController = null; chatBusy = false;
     el("bot-reply-stop").hidden = true; el("bot-reply-state").textContent = "Reply stopped · partial text may be incomplete";
@@ -137,7 +169,7 @@
     panel.hidden = true; replyCard.hidden = false;
     el("bot-reply-question").textContent = text;
     el("bot-reply-text").textContent = ""; el("bot-reply-state").textContent = "Connecting…";
-    chatBusy = true; const version = ++chatVersion;
+    companionReturning = false; chatBusy = true; const version = ++chatVersion;
     const active = new AbortController(); chatController = active;
     const timeout = setTimeout(() => active.abort(),65000);
     el("bot-reply-stop").hidden = false; syncThinking(); updateEmbodied();
@@ -192,7 +224,7 @@
       if (version === chatVersion) { el("bot-reply-state").textContent = error.name === 'AbortError' ? "Reply timed out. Try again." : error.message; if (!answer) el("bot-reply-text").textContent = "I couldn’t finish that reply. Your game hasn’t been changed."; }
     } finally {
       clearTimeout(timeout);
-      if (version === chatVersion) { chatBusy = false; chatController = null; el("bot-reply-stop").hidden = true; syncThinking(); updateEmbodied(); }
+      if (version === chatVersion) { chatBusy = false; chatController = null; companionReturning = true; el("bot-reply-stop").hidden = true; syncThinking(); updateEmbodied(); }
     }
     if (routedGoal && version === chatVersion && enabled && !running && !planning) {
       replyCard.hidden = true;
@@ -229,7 +261,7 @@
     show(true); el("unity-canvas").focus(); send("CoachSetInputBlocked", "2");
   }
   function finishGoal(token) {
-    running = false; currentAction = null; reviewReady = false; embodied.hidden = true;
+    running = false; currentAction = null; reviewReady = false; companionReturning = true; embodied.hidden = true;
     el("bot-stop").hidden = true;
     activity = []; lastActivity = "";
     message("Goal complete."); show(true);
@@ -246,7 +278,7 @@
   function stop(reason = "Stopped. Completed work is kept.") {
     const hadControl = running || pickPending || !!state?.botBusy;
     const wasActive = running || planning;
-    generation++; running = planning = false; currentAction = null; embodied.hidden = true; cancelPending();
+    generation++; running = planning = false; currentAction = null; companionReturning = true; embodied.hidden = true; cancelPending();
     if (hadControl) send("CoachBotStop", "user");
     pickPending = false; send("CoachPickTile", "0"); reviewReady = false;
     el("bot-stop").hidden = true; el("bot-plan").disabled = false;
@@ -255,6 +287,7 @@
   }
   function close() {
     if (running || planning) { minimize(); return; }
+    if (plan) { companionReturning = true; updateEmbodied(); }
     pickPending = false; send("CoachPickTile", "0"); panel.hidden = true;
     el("unity-canvas").focus(); send("CoachSetInputBlocked", "2");
   }
@@ -366,7 +399,12 @@
           continue;
         }
         if (!response.ok) throw new Error(data.error || "Could not create a plan.");
-        plan = data; batches++; drawPlan(); saveCheckpoint();
+        plan = data; batches++;
+        // A freshly prepared plan has finished its launch/inference beat, so come
+        // back to the UI dock while waiting for Start. Active chained plans remain
+        // deployed because `running` stays true during their replanning gaps.
+        if (!running) companionReturning = true;
+        drawPlan(); saveCheckpoint();
         recordActivity(data.summary, "plan");
         message(data.status === "complete" ? "Goal complete." : data.status === "blocked" ? "AstraBot needs a change before continuing." : `${data.title}. Ready when you are.`);
         return data;
@@ -387,6 +425,7 @@
   el("bot-goal-form").onsubmit = async event => {
     event.preventDefault(); if (!enabled || running || planning || chatBusy) return;
     goal = el("bot-goal").value.trim(); if (!goal) { el("bot-goal").focus(); return; }
+    companionReturning = false;
     generation++; const token = generation; results = []; plan = null; quickTask = null; batches = 0; reviewReady = false; drawProgress();
     activity = []; lastActivity = ""; el("bot-timeline").replaceChildren();
     checkpoint = {selectedTile:suggestedTile ?? state?.pickedTile ?? null};
@@ -410,7 +449,7 @@
       if (!fresh || fresh.cost > quickTask.cost) { stop("Colony changed. Pick a fresh suggestion."); return; }
       plan.actions = [fresh.action];
     }
-    running = true; startedAt = Date.now(); const token = ++generation;
+    companionReturning = false; running = true; startedAt = Date.now(); const token = ++generation;
     el("bot-editor").hidden = true; el("bot-start").hidden = true; el("bot-stop").hidden = false;
     show(true); el("unity-canvas").focus(); send("CoachSetInputBlocked", "2");
     let failures = 0;
@@ -458,14 +497,14 @@
   document.addEventListener("keydown",e=>{ if(e.key==='Escape' && chatBusy) { e.preventDefault(); stopChat(); } },true);
   window.astraBotControl = {
     focusInput() { el("bot-command-input").focus(); block(); },
-    ready(instance) { game = instance; enabled = window.astraCoach?.enabled?.() !== false; },
+    ready(instance) { game = instance; enabled = window.astraCoach?.enabled?.() !== false; updateCompanionDock(); },
     setEnabled(value) { enabled = !!value; if (!enabled) { if(chatBusy) stopChat(); replyCard.hidden=true; stop("AstraBot is switched off."); close(); } },
     suggest(id) {
       if (!enabled || running || planning || chatBusy || !game || !state || Date.now()-stateAt > 4000) return;
       replyCard.hidden = true;
       const task = window.AstraCoachPolicy?.suggestTasks(state).find(t => t.id === id);
       if (!task) return;
-      generation++; quickTask = task; goal = task.goal; results = []; batches = 0;
+      companionReturning = true; generation++; quickTask = task; goal = task.goal; results = []; batches = 0;
       activity = []; lastActivity = ""; el("bot-timeline").replaceChildren();
       checkpoint = {selectedTile:task.target || null};
       plan = {status:"ready",title:task.label,summary:task.text,modelRoute:"verified-game-state",actions:[task.action]};
@@ -493,6 +532,9 @@
     active() { return running || planning || chatBusy; },
     receive(next) {
       next = {...next, pickedTile:next.hasPickedTile ? next.pickedTile : null};
+      commandBar.dataset.nativeCompanionMode = next.companionMode || "";
+      commandBar.dataset.nativeCompanionPosition = `${Number(next.companionScreenX).toFixed(3)},${Number(next.companionScreenY).toFixed(3)}`;
+      commandBar.dataset.nativeCompanionDock = `${Number(next.companionDockX).toFixed(3)},${Number(next.companionDockY).toFixed(3)}`;
       if (session && session !== next.session) { if(chatBusy) stopChat(); chatHistory=[]; replyCard.hidden=true; }
       if (session && session !== next.session) { stop("New colony. Create a new plan."); plan = null; results = []; checkpoint = null; companionMode = ""; }
       const playerPaused = state && !state.paused && next.paused;
@@ -520,5 +562,5 @@
     },
     diagnostics() { return {running,planning,batches,completed:results.filter(r => r.status === "complete").length,status:plan?.status,compact:panel.classList.contains("compact"),panelOpen:!panel.hidden,selectedTile:state?.pickedTile ?? null}; }
   };
-  window.addEventListener?.("resize", updateEmbodied);
+  window.addEventListener?.("resize", () => { updateCompanionDock(); updateEmbodied(); });
 })();

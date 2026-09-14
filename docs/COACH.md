@@ -2,7 +2,7 @@
 
 ## Action-first companion
 
-Live activity retains only its three newest messages. A successful goal (including
+Live activity starts minimized, can be expanded on demand, and retains only its three newest messages. A successful goal (including
 an already-satisfied request) shows only “Goal complete.”, hides review controls,
 and closes after 2.2 seconds. Failure/blocker cards remain available. A new task
 invalidates the old completion timer. The persistent AstraBot avatar focuses the
@@ -11,12 +11,27 @@ menu; disabling Copilot hides both.
 
 ### Passive scanning disabled
 
-The drone returns to a camera-relative berth beside the AstraBot UI when idle.
-Task planning triggers a 1.5-second spin-up and four-second curved departure,
-concurrent with inference; it waits in-world when a plan is ready for Start.
-Conversation-only replies keep it at the berth. Cancel/completion returns it,
-and Copilot Off hides it. The animation is presentation only and never grants
+The drone docks in a bordered bay immediately to the right of Ask. A compact
+Action button to the left of Ask sends the typed goal straight to plan creation,
+bypassing conversational routing while preserving plan review and the explicit
+Start gate. The browser reports the bay's
+actual canvas-relative position to Unity, so the dock follows the half/full-width
+message bar. At the berth the drone is 45% larger, faces the camera and carries a
+slight 12-degree tilt over the persistent AstraBot avatar.
+Task planning triggers a 1.6-second figure-eight with a full 360-degree spin,
+then a faster 2.2-second curved departure concurrent with inference. World travel
+is roughly twice as fast and the action wait uses the new travel speed.
+While chat or planning inference is active, the drone flies around near the rover;
+the initial task still uses its figure-eight launch sequence. During an approved multi-batch
+goal, replanning moves the drone near the rover rather than resetting it to the
+colony port. A newly prepared plan returns toward
+the UI dock while waiting for Start. Goal completion, Stop,
+plan cancellation, settings interruption and execution failure switch to a faster
+return-to-dock mode. Copilot Off hides it. The animation is presentation only and never grants
 action approval or adds artificial API latency. Input hint: “Ask anything, just say the word.”
+At rest, the dock pose and avatar are static. Unity aligns the craft only after
+camera follow finishes for the frame, then snaps its final scale and rotation
+before measuring its visible centre; this prevents dock-bound feedback wobble.
 
 Passive model screen reads are disabled, including saved Live screen help opt-ins.
 Check my colony and the Live screen help control have been removed. The remaining
@@ -30,7 +45,7 @@ This supersedes the historical automatic-screen-help descriptions below.
 
 ### Conversation in the fixed bar
 
-Send (including Enter) lets the model route the message: questions, jokes and
+Ask (including Enter) lets the model route the message: questions, jokes and
 explanations get replies; action requests automatically prepare a goal for Start
 approval. Ambiguous requests get a clarifying question. Only a validated completed
 model response can hand off to planning; partial or failed streams cannot. The
@@ -50,7 +65,7 @@ not claim model vision. API errors remain visible and never fall through to plan
 The same origin/token/key handling and inference limits protect the chat endpoint.
 
 The fixed input above the bottom toolbar remains visible during coaching and
-execution. Enter or Send handles both conversation and task requests, never
+execution. Enter or Ask handles both conversation and task requests, never
 immediate execution. Start still approves the plan. While busy, players can draft the next message but
 cannot submit overlapping work. Copilot Off disables the input without erasing it.
 New sessions initially offer Start tutorial or Ask AstraBot.
@@ -62,9 +77,15 @@ step cannot reopen it. Show me remains an explicit, temporary highlight.
 The service drone carries a small mint, camera-facing AstraBot face badge with
 visor, eyes and antenna; it is depth-tested world geometry, not a HUD bubble.
 
-During execution the player can pan, zoom, select, build and use the toolbar alongside AstraBot. Bot actions have independent targets and use the simulation's ordinary placement validation without changing the player's tool, route preview, selection or camera. Connections recheck current occupancy and credits at placement time. The rover remains shared: a manual move cancels the bot task, and AstraBot yields if a player movement order already exists. Pausing the colony stops the task until another review and Start.
+During execution the player can pan, zoom, select, build and use the toolbar alongside AstraBot. Bot actions have independent targets and use the simulation's ordinary placement validation without changing the player's tool, route preview or selection. Connections recheck current occupancy and credits at placement time. When an AstraBot rover move or its destination falls outside the safe viewport, the camera smoothly follows the rover; the player can pan away again at any time. The rover remains shared: a manual move cancels the bot task, and AstraBot yields if a player movement order already exists. Pausing the colony stops the task until another review and Start.
 
-A small native 3D service drone uses the existing CC0 Kenney Space Kit `craft_miner.fbx`. It hovers beside the colony when idle, flies to revealed task targets, and uses a thin work beam on arrival. It shares scene lighting and depth, has no colliders, never moves the camera, and disappears when Copilot is off. Construction allows a bounded 1.4–5 second arrival beat based on travel distance. The build processor assigns the model in the build copy without overwriting the source scene. Current players suppress the old floating SVG, speech bubble and large task-target brackets; the DOM fallback remains for older players. **Live activity · expand** shows a bounded history of plan summaries, game-reported stages and confirmed results. **Open activity** expands the full Plan & Play panel during execution. The feed contains action explanations and status updates, not private chain-of-thought or token streaming from the model.
+A small native 3D service drone uses the existing CC0 Kenney Space Kit `craft_miner.fbx`. It flies from the UI dock to revealed task targets, holds its last deployed position between chained actions, and uses a thin work beam on arrival. It shares scene lighting and depth, has no colliders, and disappears when Copilot is off. Construction allows a bounded arrival beat based on travel distance. The build processor assigns the model in the build copy without overwriting the source scene. Current players suppress the old floating SVG, speech bubble and large task-target brackets; the DOM fallback remains for older players. **Live activity · expand** shows a bounded history of plan summaries, game-reported stages and confirmed results. **Open activity** expands the full Plan & Play panel during execution. The feed contains action explanations and status updates, not private chain-of-thought or token streaming from the model.
+
+When a revealed next tile is available, the deployed drone projects a translucent
+triangular green scanner toward that authoritative target. Its emissive outline,
+centre ray and four animated cross-grid lines create a pulsing holographic sweep;
+it stays hidden at the UI dock and never exposes hidden deposits. While inference
+is pending, the rover-side orbit includes a periodic vertical loop and full roll.
 
 Concurrent-control validation (14 September): 111 JavaScript tests, 79 Python tests, 41 bot-control assertions, 24 exploration assertions and the simulation suite passed. The control tests cover preserving the player's tool, selection and route preview through construction/Stop, plus manual rover priority. In a separate live Web tab, a survey completed with the embodied target and activity feed visible. A second, 20-second observation action remained running while the player selected Extractor; Stop stayed accessible with history expanded. These browser checks do not establish every possible simultaneous construction interaction.
 

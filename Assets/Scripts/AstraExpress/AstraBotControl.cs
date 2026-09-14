@@ -129,6 +129,7 @@ namespace AstraExpress
             {
                 if (!Simulation.OrderRover(cell)) { FinishBot(false, Simulation.Message); yield break; }
                 botRoverOrder = true;
+                FollowBotRoverMove(cell);
                 float deadline = Time.realtimeSinceStartup + 60;
                 botActionMessage = "Rover exploring; waiting for arrival";
                 while (Simulation.RoverMoving && Time.realtimeSinceStartup < deadline) yield return null;

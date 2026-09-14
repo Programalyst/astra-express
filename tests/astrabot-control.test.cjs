@@ -17,7 +17,7 @@ function harness({autoCapture=true}={}) {
   let now=1000, timerSequence=0;
   const document = {hidden:false,activeElement:null};
   class Element {
-    constructor(tag) { this.tagName=tag; this.hidden=false; this.disabled=false; this.value=''; this.textContent=''; this.dataset={}; this.children=[]; this.listeners=new Map(); this.classes=new Set();
+    constructor(tag) { this.tagName=tag; this.hidden=false; this.disabled=false; this.value=''; this.textContent=''; this.dataset={}; this.style={}; this.children=[]; this.listeners=new Map(); this.classes=new Set();
       this.classList={add:n=>this.classes.add(n),remove:n=>this.classes.delete(n),contains:n=>this.classes.has(n),toggle:(n,on)=>{ if(on ?? !this.classes.has(n))this.classes.add(n);else this.classes.delete(n); }};
     }
     set id(value) { this._id=value; elements.set(value,this); }
@@ -30,6 +30,7 @@ function harness({autoCapture=true}={}) {
     querySelectorAll() { return []; }
     matches() { return false; }
     contains(child) { for(let e=child;e;e=e.parent)if(e===this)return true;return false; }
+    getBoundingClientRect() { const width=this.id==='unity-canvas'?1000:48,height=this.id==='unity-canvas'?600:42;return {left:0,top:0,right:width,bottom:height,width,height}; }
     focus() { document.activeElement=this; }
   }
   document.createElement=tag=>new Element(tag);
@@ -65,20 +66,36 @@ function harness({autoCapture=true}={}) {
     dispatch:(name,extra={})=>{for(const fn of listeners.get(name)||[])fn({...event(),...extra});},document};
 }
 
-test('live activity starts expanded and can be minimized and reopened',()=>{
+test('live activity starts minimized and can be expanded and minimized again',()=>{
   const h=harness(),activity=h.e('bot-activity');
-  assert.equal(activity.open,true);
-  activity.open=false;activity.listeners.get('toggle').forEach(fn=>fn());
-  assert.equal(h.e('bot-activity-toggle').textContent,'Live activity · expand');
+  assert.equal(activity.open,false);
+  assert.match(source,/<details id="bot-activity"><summary id="bot-activity-toggle">Live activity · expand<\/summary>/);
   activity.open=true;activity.listeners.get('toggle').forEach(fn=>fn());
   assert.equal(h.e('bot-activity-toggle').textContent,'Live activity · minimize');
+  activity.open=false;activity.listeners.get('toggle').forEach(fn=>fn());
+  assert.equal(h.e('bot-activity-toggle').textContent,'Live activity · expand');
 });
 test('command bar expands only for a long draft and shrinks after shortening',()=>{
   const h=harness(),input=h.e('bot-command-input');
+  assert.match(source,/aria-label="Create action plan">Action<\/button><button id="bot-command-send" type="submit">Ask<\/button>/);
   const change=()=>input.listeners.get('input').forEach(fn=>fn());
   input.value='Hello';change();assert.equal(h.e('astrabot-commandbar').dataset.long,'false');
   input.value='Please explore east and find more ore, then help me build the mining outpost.';change();assert.equal(h.e('astrabot-commandbar').dataset.long,'true');
   input.value='';change();assert.equal(h.e('astrabot-commandbar').dataset.long,'false');
+});
+test('command bar publishes the drone dock only after its width transition settles',()=>{
+  const h=harness(),bar=h.e('astrabot-commandbar'),input=h.e('bot-command-input');
+  input.value='Please explore east and find more ore, then help me build the mining outpost.';
+  input.listeners.get('input').forEach(fn=>fn());
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionDock').length,1);
+  h.fireTimer(220);
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionDock').length,2);
+  input.value='';input.listeners.get('input').forEach(fn=>fn());
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionDock').length,2);
+  bar.listeners.get('transitionend').forEach(fn=>fn({propertyName:'opacity'}));
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionDock').length,2);
+  bar.listeners.get('transitionend').forEach(fn=>fn({propertyName:'width'}));
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionDock').length,3);
 });
 test('passive model coaching stays disabled and retired controls are absent',()=>{
   const coach=fs.readFileSync(path.join(project,'Assets/WebGLTemplates/Astra/coach.js'),'utf8');
@@ -87,16 +104,19 @@ test('passive model coaching stays disabled and retired controls are absent',()=
   assert.match(coach,/if \(!enabled \|\| !open \|\| !live/);
   assert.doesNotMatch(coach,/setInterval\([^\n]*maybeAsk/);
   assert.equal((coach.match(/root.hidden = !intro \|\| !enabled/g)||[]).length,2);
+  assert.equal((coach.match(/persistentAvatar.hidden = intro \|\| !enabled/g)||[]).length,2);
 });
-test('Send streams a visible conversation reply, preserves follow-up history and never executes',async()=>{
+test('Ask streams a visible conversation reply, preserves follow-up history and never executes',async()=>{
   const h=harness(), last=deferred();let reads=0;
   h.plans.push({ok:true,json:async()=>({}),body:{getReader:()=>({read:()=> ++reads===1 ? Promise.resolve({value:new TextEncoder().encode('{"type":"delta","text":"Ore you"}\n'),done:false}) : last.promise,cancel:async()=>{}})}});
   h.e('bot-command-input').value='Tell me a joke';const work=h.e('astrabot-commandbar').onsubmit({preventDefault(){}});await flush();
   assert.equal(h.e('astrabot-reply').hidden,false);assert.equal(h.e('bot-reply-text').textContent,'Ore you');
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'thinking');
   assert.equal(h.commands().length,0);assert.equal(h.e('bot-reply-stop').hidden,false);
   last.resolve({value:new TextEncoder().encode('{"type":"done","text":"Ore you kidding?","model":"test","intent":"chat","goal":""}\n'),done:true});await work;
   assert.equal(h.e('bot-reply-text').textContent,'Ore you kidding?');assert.equal(h.e('bot-command-input').value,'');
   assert.equal(h.e('bot-reply-state').textContent,'AstraBot · reply complete');
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
   assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,0);
 });
 test('stopping a conversation discards late streamed text without any game commands',async()=>{
@@ -107,7 +127,7 @@ test('stopping a conversation discards late streamed text without any game comma
   assert.equal(h.e('bot-reply-text').textContent,'');assert.match(h.e('bot-reply-state').textContent,/stopped/);
   assert.equal(h.commands().length,0);assert.equal(h.api.active(),false);
 });
-test('one Send routes a model-selected task to planning but still requires Start',async()=>{
+test('one Ask routes a model-selected task to planning but still requires Start',async()=>{
   const h=harness();h.e('bot-command-input').value='Please connect it';
   h.plans.push({ok:true,json:async()=>({}),body:{getReader:()=>({read:async()=>({value:new TextEncoder().encode('{"type":"done","text":"I will prepare that connection.","intent":"task","goal":"Connect my mine","model":"test"}\n'),done:true})})}},readyPlan());
   await h.e('astrabot-commandbar').onsubmit({preventDefault(){}});
@@ -119,6 +139,15 @@ test('one Send routes a model-selected task to planning but still requires Start
   assert.equal(h.e('bot-command-input').disabled,false);h.stop();await run;
   h.api.setEnabled(false);assert.equal(h.e('bot-command-input').disabled,true);
 });
+test('Action bypasses conversation routing and creates a reviewable plan directly',async()=>{
+  const h=harness();h.e('bot-command-input').value='Build a rail to the Ore mine';h.plans.push(readyPlan());
+  await h.e('bot-command-task').onclick();
+  assert.equal(h.e('bot-goal').value,'Build a rail to the Ore mine');
+  assert.equal(h.e('bot-command-input').value,'');
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/chat').length,0);
+  assert.equal(h.calls.filter(c=>c.url==='/api/astrabot/plan').length,1);
+  assert.equal(h.e('bot-start').hidden,false);assert.equal(h.commands().length,0);
+});
 test('incomplete and invalid model routes never fall through to planning',async()=>{
   for (const result of [{type:'delta',text:'I will build rails'}, {type:'done',text:'Build rails',intent:'task',goal:''}, {type:'done',text:'Oops',intent:'execute',goal:'Build rails'}]) {
     const h=harness();h.e('bot-command-input').value='Build rails';
@@ -129,7 +158,7 @@ test('incomplete and invalid model routes never fall through to planning',async(
     assert.equal(h.e('astrabot-reply').hidden,false);
   }
 });
-test('Send waits for a busy screen reader and cancellation prevents retry',async()=>{
+test('Ask waits for a busy screen reader and cancellation prevents retry',async()=>{
   const h=harness();h.e('bot-command-input').value='Hello';
   h.plans.push({ok:false,status:429,json:async()=>({error:'AstraBot is already reading a screen',retryAfterMs:4000})});
   const work=h.e('astrabot-commandbar').onsubmit({preventDefault(){}});await flush();
@@ -162,18 +191,46 @@ test('native companion replaces the DOM avatar and follows enable and task state
   h.api.suggest('discover-ore');const run=h.start();
   assert.ok(h.calls.some(c=>c.method==='CoachSetCompanionMode'&&c.value==='working'));
   h.acknowledge();await run;
-  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'idle');
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
   h.api.setEnabled(false);
   assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'off');
 });
 test('suggested jobs prepare instantly, require Start, and finish without model calls',async()=>{
   const h=harness();h.receive({frontier:true,battery:90});h.api.suggest('discover-ore');
   assert.equal(h.commands().length,0);assert.equal(h.e('bot-start').hidden,false);
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
   assert.equal(h.e('bot-plan-details').open,false);
   const run=h.start();assert.equal(h.commands()[0].type,'auto_explore');
   h.acknowledge();await run;
   assert.equal(h.api.active(),false);assert.equal(h.calls.filter(c=>c.kind==='fetch').length,0);
   h.fireTimer(2200);assert.equal(h.e('astrabot-task').hidden,true);
+});
+test('native companion holds its last deployed position instead of resetting to the colony port',()=>{
+  const embodiment=fs.readFileSync(path.join(project,'Assets/Scripts/AstraExpress/AstraBotEmbodiment.cs'),'utf8');
+  const gameSource=fs.readFileSync(path.join(project,'Assets/Scripts/AstraExpress/AstraGame.cs'),'utf8');
+  const controlCss=fs.readFileSync(path.join(project,'Assets/WebGLTemplates/Astra/astrabot-control.css'),'utf8');
+  assert.match(embodiment,/Vector3 destination = deployed \? companionWorkPosition/);
+  assert.doesNotMatch(embodiment,/deployed \? \(working \? companionWorkPosition : home\)/);
+  assert.doesNotMatch(embodiment,/Position\(Simulation\.Colony\.Port/);
+  assert.match(embodiment,/Vector3 roverHover = Position\(Simulation\.RoverCell/);
+  assert.match(embodiment,/Vector3 thinkingOrbit = worldCamera\.transform\.right/);
+  assert.match(embodiment,/Vector3 thinkingLoop = worldCamera\.transform\.up/);
+  assert.match(embodiment,/trickProgress \* 360f/);
+  assert.match(embodiment,/: thinking \? roverHover \+ thinkingOrbit/);
+  assert.match(embodiment,/currentView = worldCamera\.WorldToViewportPoint/);
+  assert.match(embodiment,/screenSpeed = returning \? 0\.24f/);
+  assert.match(embodiment,/Vector3 visualCenter = CompanionCenter\(\)/);
+  assert.match(embodiment,/companionVisual\.position \+= nextCenter - visualCenter/);
+  assert.match(embodiment,/bool settledDock = companionDocked/);
+  assert.match(embodiment,/companionVisual\.localScale = companionBaseScale \* dockScale/);
+  assert.match(embodiment,/AstraBot triangular holographic scanner/);
+  assert.match(embodiment,/CompanionScannerTriangles = \{ 0, 1, 2 \}/);
+  assert.match(embodiment,/companionScannerMesh\.triangles = CompanionScannerTriangles/);
+  assert.match(embodiment,/Scanner grid 4/);
+  assert.match(embodiment,/Simulation\.IsRevealed\(botTarget\.Value\)/);
+  assert.match(gameSource,/private void LateUpdate\(\)[\s\S]*PositionCamera\(\);[\s\S]*UpdateAstraBotVisual\(\);/);
+  assert.doesNotMatch(gameSource,/MoveVisual\(roverVisual,[^\n]+\);\s*UpdateAstraBotVisual\(\);/);
+  assert.match(controlCss,/#bot-drone-dock #astrabot-avatar-home \.astrabot-float\{animation:none;transform:none\}/);
 });
 test('suggested jobs reject stale, disabled, occupied-rover and changed-cost state',()=>{
   const h=harness();h.receive({frontier:true,battery:90});h.advance(4100);h.api.suggest('discover-ore');
@@ -196,9 +253,28 @@ test('thinking is visible while planning and clears on cancellation and success'
   assert.ok(h.calls.some(c=>c.method==='CoachSetCompanionMode'&&c.value==='launching'));
   assert.equal(h.commands().length,0);
   h.stop();assert.equal(h.e('bot-thinking').hidden,true);
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
   pending.resolve(response(readyPlan()));await work;
   h.plans.push(readyPlan());await h.submit('Find ore');assert.equal(h.e('bot-thinking').hidden,true);
-  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'ready');
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
+});
+test('Stop and closing a prepared plan both send the drone home',async()=>{
+  const h=harness();h.plans.push(readyPlan());await h.submit('Build a mine');
+  h.e('bot-close').onclick();
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
+  h.plans.push(readyPlan());await h.submit('Build another mine');
+  const run=h.start();await flush();h.stop();await run;
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
+});
+test('replanning between chained actions sends the deployed drone toward the rover',async()=>{
+  const h=harness(), pending=deferred();h.plans.push(readyPlan(),pending);
+  await h.submit('Explore, build, and connect the mine');
+  const run=h.start();await flush();h.acknowledge();await flush();
+  const modes=h.calls.filter(c=>c.method==='CoachSetCompanionMode').map(c=>c.value);
+  assert.equal(modes.filter(mode=>mode==='launching').length,1);
+  assert.equal(modes.at(-1),'thinking');
+  pending.resolve(response(completePlan()));await run;
+  assert.equal(h.calls.filter(c=>c.method==='CoachSetCompanionMode').at(-1).value,'returning');
 });
 test('a whole-colony offer clears an older selected tile',()=>{
   const h=harness();h.receive({hasPickedTile:true,pickedTile:{x:11,y:7}});

@@ -106,7 +106,7 @@ namespace AstraExpress
         [Serializable] private sealed class CoachState
         {
             public string session, tool, message, selectedKind, trainPhase, placementReason;
-            public string botActionId, botActionStatus, botActionMessage;
+            public string botActionId, botActionStatus, botActionMessage, companionMode;
             public bool botBusy, pickingTile, hasPickedTile, nativeCompanion, smartRouting = true;
             public CoachPoint pickedTile, botTarget;
             public CoachPoint[] connectionTargets;
@@ -114,7 +114,7 @@ namespace AstraExpress
             public CoachRoute solarSitePowerRoute, pickedSitePowerRoute;
             public int credits, produced, sold, deliveries, capacity, capacityLevel, cargo;
             public int selectedTrainIndex, idleTrains, trainCount, maxTrains, trainCost, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
-            public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy;
+            public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy, companionScreenX, companionScreenY, companionDockX, companionDockY;
             public bool paused, roverMoving, routeStarted, trainParkRequested, trainSelected, canBuyTrain;
             public CoachPoint rover, colonyPort, selected, routeStart, frontier, solarSite, plantSite, fuelDestination;
             public CoachBuilding[] buildings;
@@ -252,8 +252,11 @@ namespace AstraExpress
             int trainIndex = Mathf.Clamp(selectedTrainIndex, 0, Simulation.Trains.Count - 1);
             var currentTrain = Simulation.Trains[trainIndex];
             var currentDestination = CoachFuelDestination(selected);
+            Vector3 companionView = companionVisual != null ? worldCamera.WorldToViewportPoint(CompanionCenter()) : new Vector3(-1, -1, 0);
             var state = new CoachState {
                 session = coachSession, elapsed = Time.realtimeSinceStartup, tool = tool.ToString(), nativeCompanion = AstraBotModel != null,
+                companionMode = this.companionMode, companionScreenX = companionView.x, companionScreenY = companionView.y,
+                companionDockX = companionDockViewport.x, companionDockY = companionDockViewport.y,
                 connectionTargets = networkPortOptions.Where(b => !routeStart.HasValue || !b.Port.Equals(routeStart.Value)).OrderBy(b => b.Starter ? 0 : 1).Select(b => CoachPosition(b.Port)).ToArray(),
                 botActionId = botActionId, botActionStatus = botActionStatus, botActionMessage = botActionMessage, botBusy = botBusy, pickingTile = pickingTile, hasPickedTile = pickedTile.HasValue,
                 pickedTile = pickedTile.HasValue ? CoachPosition(pickedTile.Value) : null,

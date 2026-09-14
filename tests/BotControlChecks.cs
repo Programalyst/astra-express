@@ -29,6 +29,7 @@ namespace AstraExpress
         private string coachSession = "control-check";
         private int commandCount;
         private UnityEngine.Coroutine lastRoutine;
+        private Cell? botCameraTarget;
         private UnityEngine.Coroutine StartCoroutine(IEnumerator routine)
         {
             lastRoutine = new UnityEngine.Coroutine(); lastRoutine.Stack.Push(routine); return lastRoutine;
@@ -37,6 +38,7 @@ namespace AstraExpress
         private void SetTool(Tool value) { tool = value; routeStart = null; trainSelected = false; }
         private void SetToolForFleet() { tool = Tool.Explore; routeStart = null; }
         private void HideLinkGuide() {}
+        private void FollowBotRoverMove(Cell target) { followRover = true; botCameraTarget = target; }
         private void CoachFocus(string coordinates) {}
         private void CoachGuideLink(string command) { SetTool(command.StartsWith("Rail") ? Tool.Rail : Tool.Conduit); }
         private Structure CoachFuelDestination(Structure b) => Simulation.Structures.FirstOrDefault(s => s.Kind == StructureKind.PowerPlant);
@@ -47,6 +49,7 @@ namespace AstraExpress
         public bool HasPreview => routeStart.HasValue;
         public void ManualContext() { tool = Tool.Rail; routeStart = Simulation.Colony.Port; selected = Simulation.Colony; verticalFirst = true; }
         public bool ManualContextKept => tool == Tool.Rail && routeStart.HasValue && routeStart.Value.Equals(Simulation.Colony.Port) && selected == Simulation.Colony && verticalFirst;
+        public bool FollowingBotRover(Cell target) => followRover && botCameraTarget.HasValue && botCameraTarget.Value.Equals(target);
         public void ManualRover(Cell target) { YieldBotRoverToPlayer(); Simulation.OrderRover(target); }
         public void Start(string type, Cell cell)
         {
@@ -104,6 +107,7 @@ class BotControlChecks
         Check(parallel.ManualContextKept, "Stopping the bot preserves the player's independent route preview");
         var sharedRover = Game(); sharedRover.Start("explore", new Cell(10,6));
         sharedRover.Until(() => sharedRover.ActionMessage.Contains("waiting for arrival"));
+        Check(sharedRover.FollowingBotRover(new Cell(10,6)), "Bot rover movement requests camera follow for its destination");
         sharedRover.ManualRover(new Cell(8,6)); sharedRover.Run();
         Check(sharedRover.Status == "cancelled" && sharedRover.Simulation.RoverMoving, "Manual rover order cancels only the bot order and keeps the player order moving");
         var reserved = Game(); reserved.Simulation.OrderRover(new Cell(10,6));

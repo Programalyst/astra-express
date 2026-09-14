@@ -20,8 +20,10 @@ namespace AstraExpress
         public string Result;
         public bool Success;
         public int Finishes;
+        public int CameraFollowRequests;
         private void SetTool(Tool tool) { }
         private void CoachFocus(string position) { }
+        private void FollowBotRoverMove(Cell target) { CameraFollowRequests++; }
         private void FinishBot(bool success, string message)
         {
             if (botRoverOrder) { Simulation.StopRover(); botRoverOrder = false; }
@@ -60,6 +62,7 @@ class ExplorationChecks
         var before = new HashSet<Cell>(initial.Simulation.Deposits.Where(initial.Simulation.FullyRevealed).Select(d => d.Origin));
         UnityEngine.Time.realtimeSinceStartup = 0;
         Run(initial);
+        Check(initial.CameraFollowRequests > 0, "Automatic survey requests rover framing as it moves toward the frontier");
         Check(initial.Success && initial.Result.StartsWith("New Ore discovered"), "Automatic survey discovers actual new Ore");
         Check(initial.Simulation.Deposits.Any(d => d.Resource == ResourceKind.Ore && initial.Simulation.FullyRevealed(d) && !before.Contains(d.Origin)), "Discovery result agrees with newly visible simulation Ore");
         Check(UnityEngine.Time.realtimeSinceStartup < 55, "Discovery completes before action deadline");
