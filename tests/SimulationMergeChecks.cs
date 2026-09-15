@@ -29,7 +29,7 @@ class Review
         var sim = new ColonySimulation();
         sim.Reveal(14, 11, 100);
         var terrain = sim.Terrain;
-        foreach (var bounds in new[] { new[] { 17, 29, 3, 28 }, new[] { 1, 9, 18, 26 } })
+        foreach (var bounds in new[] { new[] { 17, 29, 3, 22 }, new[] { 1, 9, 18, 26 } })
         {
             for (int column = bounds[0]; column <= bounds[1]; column++)
                 for (int row = bounds[2]; row <= bounds[3]; row++)
@@ -56,6 +56,22 @@ class Review
         Reach(sim, upperExit);
         var exitRoute = new[] { upperExit, valleyRamp, valleyExit };
         Check(sim.Lay(exitRoute, false) && sim.Lay(exitRoute, true), "Both power and rail infrastructure cross new valley ramp");
+        var fuelUpper = new Cell(25, 21);
+        var fuelRamp = new Cell(25, 22);
+        var fuelLow = new Cell(25, 23);
+        var fuelPort = new Cell(25, 24);
+        Check(terrain.Kind(fuelRamp) == TerrainKind.Ramp && terrain.Uphill(fuelRamp).Equals(new Cell(0, -1)), "Eastern plateau descent faces north toward Fluxite");
+        Check(terrain.Elevation(fuelUpper) == 1 && terrain.HeightAt(fuelLow.X, fuelLow.Y) == 0 && terrain.HeightAt(fuelPort.X, fuelPort.Y) == 0, "Descent joins upper ground to the lowland Fluxite port");
+        Check(terrain.CanTraverse(fuelUpper, fuelRamp) && terrain.CanTraverse(fuelRamp, fuelLow) && terrain.CanTraverse(fuelLow, fuelRamp) && terrain.CanTraverse(fuelRamp, fuelUpper), "Fluxite ramp traverses in both directions");
+        Check(!terrain.CanTraverse(fuelRamp, new Cell(24, 22)) && !terrain.CanTraverse(fuelRamp, new Cell(26, 22)), "Fluxite ramp rejects sideways exits");
+        Check(Math.Abs(terrain.EdgeCost(fuelUpper, fuelRamp) + terrain.EdgeCost(fuelRamp, fuelLow) - 2.25f) < .0001f, "Fluxite descent has correct surface distance");
+        var fuelRoute = new[] { fuelUpper, fuelRamp, fuelLow, fuelPort };
+        Check(sim.FindPath(fuelUpper, fuelPort, cell => sim.StructureAt(cell) == null).SequenceEqual(fuelRoute), "Direct downhill route reaches the Fluxite port");
+        Reach(sim, fuelUpper);
+        Reach(sim, fuelPort);
+        Reach(sim, fuelUpper);
+        Check(sim.Lay(fuelRoute, false) && sim.Lay(fuelRoute, true), "Power and rails can descend toward Fluxite");
+        Check(ColonySimulation.Footprint(new Cell(25, 25), 2).All(cell => terrain.Kind(cell) == TerrainKind.Flat && terrain.HeightAt(cell.X, cell.Y) == 0), "Entire Fluxite footprint sits on flat low ground");
         Check(ColonySimulation.Width == 32 && ColonySimulation.Height == 32, "Grid is 32 by 32");
         Check(ColonySimulation.InBounds(new Cell(31, 31)), "Expanded corner is in bounds");
         Check(!ColonySimulation.InBounds(new Cell(32, 31)) && !ColonySimulation.InBounds(new Cell(31, 32)), "Expanded boundaries reject outside cells");
@@ -96,7 +112,7 @@ class Review
         Check(sim.Credits == credits && sim.Conduits.Count == conduits && sim.Rails.Count == rails, "Rejected terrain routes preserve money and networks");
         // Positive network test reaches a real plateau deposit from the real colony.
         // Reuse the earned credits and idle locomotive from the fleet scenarios.
-        var plateau = Build(economy, StructureKind.Extractor, new Cell(22, 16));
+        var plateau = Build(economy, StructureKind.Extractor, new Cell(4, 23));
         var route = economy.FindPath(economy.Colony.Port, plateau.Port, c => economy.StructureAt(c) == null);
         Check(route != null && route.Any(cell => economy.Terrain.Kind(cell) == TerrainKind.Ramp), "Plateau connection uses a ramp");
         Check(economy.Lay(route, false) && plateau.Connected, "Conduit powers plateau mine across ramp");
@@ -215,7 +231,7 @@ class Review
         var existing = ColonySimulation.Corridor(reuseStart, reuseEnd, true);
         Check(reuse.Lay(existing, false), "Create existing alternate conduit route");
         Build(reuse, StructureKind.Extractor, new Cell(10, 4));
-        Build(reuse, StructureKind.Extractor, new Cell(12, 16));
+        Build(reuse, StructureKind.Extractor, new Cell(23, 13));
         Build(reuse, StructureKind.Solar, new Cell(8, 4));
         Check(!reuse.CanLay(ColonySimulation.Corridor(reuseStart, reuseEnd), false, out _, out _), "Preferred new bend exceeds the remaining credits");
         snapshot = NetworkState(reuse);
@@ -272,7 +288,7 @@ class Review
         Link(sim, ore, false);
         Advance(sim, 180);
         Check(sim.Sold > 0, "Automatically dispatched service earns credits");
-        var secondOre = Build(sim, StructureKind.Extractor, new Cell(12, 16));
+        var secondOre = Build(sim, StructureKind.Extractor, new Cell(23, 13));
         Link(sim, secondOre, true);
         Check(sim.Train.Source == ore && sim.TrainFor(secondOre).Source == secondOre, "New mine uses its own train without stealing the existing service");
         Check(sim.Trains.Count == 2, "Each extractor adds exactly one free train");
@@ -319,11 +335,14 @@ class Review
         Check(rocks.Any(cell => layout.Terrain.Elevation(cell) == 1) && rocks.Any(cell => layout.Terrain.Elevation(cell) == 0), "Rocks decorate both elevations");
         Check(layout.DepositAt(new Cell(13, 3)) == null, "Previous nearby ore location is empty");
         Check(layout.DepositAt(new Cell(10, 4))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(10, 4))?.Size == 1, "Nearby ore is a 1x1 patch at (10, 4)");
+        Check(layout.DepositAt(new Cell(12, 16)) == null, "Farther 1x1 ore leaves its previous lowland site clear");
+        Check(layout.DepositAt(new Cell(23, 13))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(23, 13))?.Size == 1 && layout.Terrain.Elevation(new Cell(23, 13)) == 1, "Farther 1x1 ore occupies the center of the eastern plateau");
         Check(layout.DepositAt(new Cell(13, 8))?.Resource == ResourceKind.Fluxite && layout.DepositAt(new Cell(13, 8))?.Size == 1, "Small Fluxite moves to the former nearby ore site");
         Check(layout.Deposits.Count == 5 && layout.Deposits.Count(deposit => deposit.Resource == ResourceKind.Ore && deposit.Size == 2) == 1, "Only the resized distant 2x2 ore patch remains");
         Check(layout.DepositAt(new Cell(20, 6)) == null, "Former eastern 2x2 ore patch is removed");
-        Check(layout.DepositAt(new Cell(22, 16))?.Size == 2 && layout.Deposits.All(deposit => deposit.Size < 3), "Former 3x3 ore patch uses the 2x2 tier");
-        Check(layout.DepositAt(new Cell(24, 16)) == null && layout.DepositAt(new Cell(22, 18)) == null, "Resized ore releases its former outer row and column");
+        Check(layout.DepositAt(new Cell(25, 25))?.Size == 2 && layout.Deposits.All(deposit => deposit.Size < 3), "Eastern Fluxite deposit retains the 2x2 tier");
+        Check(ColonySimulation.Footprint(new Cell(22, 16), 2).All(cell => layout.DepositAt(cell) == null), "Moved Fluxite leaves its previous footprint clear");
+        Check(layout.DepositAt(new Cell(24, 16)) == null && layout.DepositAt(new Cell(22, 18)) == null, "Eastern deposit leaves its former outer row and column clear");
         Check(layout.DepositAt(new Cell(15, 11)) == null && layout.DepositAt(new Cell(11, 7)) == null && layout.DepositAt(new Cell(8, 13)) == null && layout.DepositAt(new Cell(4, 17)) == null, "Former nearby resource sites are empty");
         foreach (var deposit in layout.Deposits)
         {
@@ -334,7 +353,8 @@ class Review
             Check(footprint.All(cell => layout.Deposits.Count(other => other.Contains(cell)) == 1 && layout.StructureAt(cell) == null), "Deposit does not overlap another deposit or starter structure");
             Check(!layout.FullyRevealed(deposit), "Resource sites require exploration");
         }
-        Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "Moved Fluxite stays on northern plateau");
+        Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(4, 23))?.Size == 2 && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "2x2 ore occupies the former northern Fluxite site");
+        Check(layout.DepositAt(new Cell(25, 25))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(25, 25)) == 0, "2x2 Fluxite occupies (25, 25) on low ground north of the eastern plateau");
         var sim=new ColonySimulation(); Check(sim.Trains.Count == 0 && sim.Train == null, "No unowned starter train"); Check(!sim.UpgradeTrain(), "No train upgrade before an extractor exists"); sim.Reveal(14,11,100);
         var ore=Build(sim,StructureKind.Extractor,new Cell(10,4)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");

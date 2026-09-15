@@ -156,7 +156,7 @@ class BotControlChecks
         var expansion = Game(1000);
         var expansionSolar = new Cell(8, 9);
         var firstMine = new Cell(10, 4);
-        var secondMine = new Cell(22, 16);
+        var secondMine = new Cell(4, 23);
         expansion.Start("build_solar", expansionSolar); expansion.Run();
         Check(expansion.Status == "complete" && ArrayAt(expansion, expansionSolar).Connected, "Expansion solar joins the shared colony power grid");
         expansion.Start("build_extractor", firstMine); expansion.Run();

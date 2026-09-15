@@ -9,13 +9,15 @@ namespace AstraExpress
         public const float LevelHeight = 1.5f;
         public const float CellSize = 2;
         public const int HillsideColumn = 17;
+        public const int EasternHillsideRow = 22;
+        public const int EasternDescentColumn = 25;
         public const int NorthernHillsideColumn = 9;
         public const int NorthernHillsideRow = 18;
         public const int NorthernRampColumn = 4;
         public const int NorthernValleyRampRow = 22;
         private static readonly Plateau[] plateaus =
         {
-            new Plateau(17, 29, 3, 28),
+            new Plateau(17, 29, 3, EasternHillsideRow),
             new Plateau(1, 9, NorthernHillsideRow, 26)
         };
 
@@ -44,6 +46,7 @@ namespace AstraExpress
         {
             if (Boundary(cell) == null) return TerrainKind.Flat;
             if (cell.X == HillsideColumn && (cell.Y == 5 || cell.Y == 15)
+                || cell.X == EasternDescentColumn && cell.Y == EasternHillsideRow
                 || cell.X == NorthernRampColumn && cell.Y == NorthernHillsideRow
                 || cell.X == NorthernHillsideColumn && cell.Y == NorthernValleyRampRow) return TerrainKind.Ramp;
             return TerrainKind.Hillside;

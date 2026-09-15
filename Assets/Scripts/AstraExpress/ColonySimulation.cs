@@ -125,10 +125,10 @@ namespace AstraExpress
             Structures.Add(Colony);
             Structures.Add(new Structure { Kind = StructureKind.Solar, Origin = new Cell(2, 7), Size = 2, Starter = true, Connected = true });
             Deposits.Add(new Deposit { Origin = new Cell(10, 4), Size = 1 });
-            Deposits.Add(new Deposit { Origin = new Cell(12, 16), Size = 1 });
+            Deposits.Add(new Deposit { Origin = new Cell(23, 13), Size = 1 });
             Deposits.Add(new Deposit { Origin = new Cell(13, 8), Size = 1, Resource = ResourceKind.Fluxite });
-            Deposits.Add(new Deposit { Origin = new Cell(4, 23), Size = 2, Resource = ResourceKind.Fluxite });
-            Deposits.Add(new Deposit { Origin = new Cell(22, 16), Size = 2 });
+            Deposits.Add(new Deposit { Origin = new Cell(25, 25), Size = 2, Resource = ResourceKind.Fluxite });
+            Deposits.Add(new Deposit { Origin = new Cell(4, 23), Size = 2, Resource = ResourceKind.Ore });
             Conduits.Add(Colony.Port);
             Rails.Add(Colony.Port);
             Reveal(5.5f, 7.5f, 5);
