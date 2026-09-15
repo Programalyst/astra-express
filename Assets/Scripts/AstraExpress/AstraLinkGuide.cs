@@ -64,6 +64,7 @@ namespace AstraExpress
             if (!rail)
             {
                 if (building.Kind == StructureKind.Solar) return "POWER LINKED · This solar array now supplies the colony.";
+                if (building.Kind == StructureKind.Turret) return $"POWER LINKED · This turret automatically fires at visible aliens within {ColonySimulation.TurretRange:0} tiles.";
                 if (building.Kind == StructureKind.PowerPlant) return building.Paused ? "POWER LINKED · Resume this plant after Fluxite arrives." : "POWER LINKED · Delivered Fluxite can fuel this plant when the battery needs power.";
                 return building.Paused ? "POWER LINKED · Resume this extractor to start mining." : "POWER LINKED · Rails and an assigned train carry the mined resource.";
             }

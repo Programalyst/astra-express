@@ -34,9 +34,9 @@ namespace AstraExpress
         {
             public string kind, resource;
             public CoachPoint origin, port, destination, destinationPort;
-            public bool connected, paused, railConnected, served, destinationRailConnected;
+            public bool connected, paused, railConnected, served, destinationRailConnected, disabled;
             public int stock, storage, level, size, servedBy;
-            public float demand, rate, generation, burnEnergy, suppliedFraction;
+            public float demand, rate, generation, burnEnergy, suppliedFraction, health, repairRemaining;
             public CoachRoute powerRoute, railRoute, destinationRailRoute;
         }
         [Serializable] private sealed class CoachDeposit
@@ -66,6 +66,8 @@ namespace AstraExpress
             string[] names = { "explore", "extractor", "solar", "conduit", "rail", "plant" };
             for (int i = 0; i < names.Length; i++) Add("tool-" + names[i], names[i], new Rect(28 + i * 147, UiHeight - 75, 139, 44));
             Add("pause", Simulation.Paused ? "Resume" : "Pause", new Rect(UiWidth - 214, 17, 92, 36));
+            if (DefensePanel != Rect.zero) Add("tool-turret", "Build laser turret", new Rect(DefensePanel.x + 12, DefensePanel.y + 58, DefensePanel.width - 24, 32));
+            if (RepairPanel != Rect.zero) Add("repair-building", "Repair building", new Rect(RepairPanel.x + 12, RepairPanel.y + 26, RepairPanel.width - 24, 29));
             if (ConnectionPanelVisible) Add("connection-cancel", NetworkTool ? "Cancel connection" : "Dismiss connection status", ConnectionCancelRect);
             if (!SidebarVisible || NetworkTool) return anchors.ToArray();
             if (ConnectionSelection)
@@ -92,6 +94,8 @@ namespace AstraExpress
             var panels = new List<CoachAnchor>();
             void Add(string id, Rect rect) => panels.Add(new CoachAnchor { id = id, x = rect.x / UiWidth, y = rect.y / UiHeight, width = rect.width / UiWidth, height = rect.height / UiHeight });
             Add("header", new Rect(0, 0, UiWidth, 72));
+            if (DefensePanel != Rect.zero) Add("defense", DefensePanel);
+            if (RepairPanel != Rect.zero) Add("repair", RepairPanel);
             if (ObjectiveVisible) Add("objective", ObjectivePanel);
             if (SidebarVisible) Add("sidebar", Sidebar);
             if (ConnectionPanelVisible) Add("connection", LinkGuidePanel);
@@ -114,6 +118,10 @@ namespace AstraExpress
             public CoachBuilding[] buildings;
             public CoachDeposit[] deposits;
             public CoachTrain[] trains;
+            public bool raidsStarted;
+            public int waveNumber, aliensDefeated;
+            public float nextWaveIn;
+            public CoachPoint[] visibleAliens;
         }
         private void ResetCoach() { coachSession = Guid.NewGuid().ToString("N"); coachTimer = 1; }
 
@@ -223,7 +231,8 @@ namespace AstraExpress
                 kind = building.Kind.ToString(), resource = extractor ? building.Deposit.Resource.ToString() : plant ? ResourceKind.Fluxite.ToString() : "",
                 origin = CoachPosition(building.Origin), port = CoachPosition(building.Port), size = building.Size,
                 connected = building.Connected, paused = building.Paused, stock = building.Stock, storage = building.Storage, level = building.Level,
-                demand = extractor ? building.Demand : 0, rate = building.Rate, generation = building.Kind == StructureKind.Solar && building.Connected ? 2 : building.Generation,
+                health = building.Health, disabled = building.Disabled, repairRemaining = building.RepairRemaining,
+                demand = extractor ? building.Demand : 0, rate = building.Rate, generation = building.Kind == StructureKind.Solar && building.Connected && !building.Disabled ? 2 : building.Generation,
                 burnEnergy = building.BurnEnergy, suppliedFraction = building.SuppliedFraction, served = servedBy >= 0, servedBy = servedBy,
                 railConnected = (extractor || plant) && Simulation.RailRoute(building) != null,
                 powerRoute = building.Connected ? null : CoachPath(building, false),
@@ -271,8 +280,14 @@ namespace AstraExpress
                 fuelDestination = currentDestination == null ? null : CoachPosition(currentDestination.Origin),
                 placementReason = ""
             };
-            if (hover.HasValue && (tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant))
-                Simulation.CanBuild(tool == Tool.Extractor ? StructureKind.Extractor : tool == Tool.PowerPlant ? StructureKind.PowerPlant : StructureKind.Solar, hover.Value, out _, out _, out _, out state.placementReason);
+            state.raidsStarted = Simulation.RaidsStarted;
+            state.waveNumber = Simulation.WaveNumber;
+            state.aliensDefeated = Simulation.AliensDefeated;
+            state.nextWaveIn = Simulation.NextWaveIn;
+            state.visibleAliens = Simulation.Aliens.Select(alien => new Cell(Mathf.RoundToInt(alien.X), Mathf.RoundToInt(alien.Y)))
+                .Where(Simulation.IsRevealed).Select(CoachPosition).ToArray();
+            if (hover.HasValue && BuildingTool)
+                Simulation.CanBuild(BuildKind, hover.Value, out _, out _, out _, out state.placementReason);
             if (hover.HasValue && routeStart.HasValue)
                 Simulation.TryPlanNetworkRoute(routeStart.Value, NetworkEndpoint(hover.Value), tool == Tool.Rail, verticalFirst, out _, out _, out state.placementReason);
             state.buildings = Simulation.Structures.Select(CoachBuildingState).ToArray();

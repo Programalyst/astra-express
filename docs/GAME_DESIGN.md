@@ -18,7 +18,7 @@ This revision replaces the earlier fixed-industry, refinery, food, and gate scen
 
 - Most of the map starts under fog; only a small area around the colony is visible.
 - The player moves a rover by clicking a destination. Movement consumes power and clears surrounding fog.
-- One starting solar installation regenerates power. More panels increase generation speed.
+- One starting solar installation regenerates power, visibly pre-connected by a free conduit from its south port `(2, 6)` to the colony port `(5, 6)`. Every panel uses the same conduit-connectivity rule; more connected panels increase generation speed.
 - Discovered ore patches support resource extractors.
 - The world uses a square grid. Low-yield 1 by 1 deposits lie near the colony, higher-yield 2 by 2 deposits farther away, and the highest-yield 3 by 3 deposits in more distant areas.
 - The map has two elevations, connected by straight ramp passes. Hillsides cannot be traversed or built on. Buildings and their south ports need flat, equal-height ground; rails and conduits cross elevations only through ramps. No NavMesh, bridges, tunnels, or terraforming are included.
@@ -105,7 +105,7 @@ Show current charge, capacity, generation per second, extractor demand, and net 
 
 Proposed shortage policy: protect a small reserve from automatic extraction and give rover movement priority. Extractors pause below the reserve and display Low power. The player can pause individual machines to recover faster. Allocate limited power fairly across operating extractors rather than always starving the last-built machine. Mining progress advances only for work actually supplied with power.
 
-Proposed recovery guarantee: the starter panel is attached directly to the colony and cannot be demolished. It always offers a way to regenerate power. There is no night cycle, panel degradation, or ongoing train energy cost in the initial release. A train can still deliver stored ore while the battery is empty.
+The starter panel begins with an actual, visible conduit connection to the colony, not an implicit power exemption. Its four conduit cells are free and can be reused when extending the grid. There is no night cycle, panel degradation, or ongoing train energy cost. If aliens disable the panel, free timed repairs restore it. A train can still deliver stored ore while the battery is empty, provided its destination is operational.
 
 ### Conduits and connectivity
 
@@ -126,6 +126,10 @@ Implemented tuning defaults: a plant occupies 2 by 2 clear cells, costs 250 cred
 Fluxite deposits are at `(13, 8)` (1 by 1) and `(25, 25)` (2 by 2, on low ground north of the eastern plateau, south port at `(25, 24)`). Ore sites are at `(10, 4)` (1 by 1, lowland), `(23, 13)` (1 by 1, centered on top of the eastern plateau, south port at `(23, 12)`), and `(4, 23)` (2 by 2, on the northern plateau). The farther 1 by 1 ore's former lowland site `(12, 16)` is empty. The two large deposits swapped positions before Fluxite moved farther northeast to `(25, 25)`, without changing their footprints or yields; `(22, 16)` is now empty. The eastern plateau's northern cliff is at row 22, with a north-facing descent at `(25, 22)` leading to the lowland Fluxite port. The former 2 by 2 ore sites at `(15, 11)` and `(20, 6)` were removed, the former 3 by 3 ore was reduced to the 2 by 2 tier, and both small ore sites moved farther from the colony to encourage exploration. Extractors use the same tier prices, mining power, storage, and upgrades for either resource. Ore and fuel have independent conservation ledgers.
 
 ## Construction and extraction
+
+### Alien defense
+
+Producing from either 2x2 deposit awakens alien waves from the northwest. Build conduit-powered automated laser turrets with the Frontier Defense panel or key 7. Defeated buildings are disabled rather than destroyed; select them for free timed repairs. Layouts, cargo, and owned trains are retained. See [Defense gameplay](DEFENSE.md) for implemented triggers, controls, balance, and recovery rules; this supersedes the earlier deferred-combat proposal.
 
 Construction requires revealed terrain. Proposed default: the rover does not need to stand beside every construction site. Exploration unlocks an area for building without requiring a second trip for every structure.
 

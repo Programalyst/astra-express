@@ -15,6 +15,8 @@ namespace AstraExpress
         public GameObject SolarModel;
         public GameObject ExtractorModel;
         public GameObject PowerPlantModel;
+        public GameObject AlienModel;
+        public GameObject TurretModel;
         public GameObject OreModel;
         public GameObject DecorativeRockModel;
         public GameObject FluxiteModel;
@@ -24,11 +26,12 @@ namespace AstraExpress
         public GameObject HillsideModel;
         public GameObject HillsideCornerModel;
         public Material SurfaceTemplate;
+        public Material LaserMaterial;
         public Material TerrainSurfaceMaterial;
         [Min(0.1f)] public float TerrainTextureRepeat = 6f;
         [SerializeField] private string diagnostics;
         public ColonySimulation Simulation { get; private set; }
-        private enum Tool { Explore, Extractor, Solar, Conduit, Rail, PowerPlant }
+        private enum Tool { Explore, Extractor, Solar, Conduit, Rail, PowerPlant, Turret }
         private Tool tool;
         private Camera worldCamera;
         private Transform worldRoot;
@@ -85,16 +88,16 @@ namespace AstraExpress
         private float UiWidth => Screen.width / UiScale;
         private float UiHeight => Screen.height / UiScale;
         private bool SidebarVisible => !Simulation.Paused && !pickingTile && !BuildingTool && (trainSelected || selected != null);
-        private bool ConnectionSelection => SidebarVisible && !trainSelected && selected != null && (NetworkTool || (!selected.Connected && selected.Kind != StructureKind.Extractor));
+        private bool ConnectionSelection => SidebarVisible && !trainSelected && selected != null && selected.Kind != StructureKind.Turret && (NetworkTool || (!selected.Connected && selected.Kind != StructureKind.Extractor));
         private Rect Sidebar => SidebarVisible ? new Rect(UiWidth - 294, 88, 278,
             ConnectionSelection && NetworkTool ? 174 : ConnectionSelection || (!trainSelected && selected != null && (selected.Kind == StructureKind.Solar || selected.Kind == StructureKind.Colony)) ? 210 : selected?.Kind == StructureKind.Extractor ? 422 : 380) : Rect.zero;
         private Rect ConnectionActionRect => new Rect(Sidebar.x + 18, 252, Sidebar.width - 36, 34);
         private bool ObjectiveVisible => !Simulation.Paused && !pickingTile && !trainSelected && selected == null && !BuildingTool && !NetworkTool && !ConnectionPanelVisible;
         private Rect ObjectivePanel => ObjectiveVisible ? new Rect(16, 88, 350, 114) : Rect.zero;
-        private bool ContextPanelContains(Vector2 point) => SidebarVisible && Sidebar.Contains(point) || ObjectiveVisible && ObjectivePanel.Contains(point) || ConnectionPanelVisible && LinkGuidePanel.Contains(point);
-        private bool ContextPanelOverlaps(Rect rectangle) => SidebarVisible && Sidebar.Overlaps(rectangle) || ObjectiveVisible && ObjectivePanel.Overlaps(rectangle) || ConnectionPanelVisible && LinkGuidePanel.Overlaps(rectangle);
-        private bool BuildingTool => tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant;
-        private StructureKind BuildKind => tool == Tool.PowerPlant ? StructureKind.PowerPlant : tool == Tool.Solar ? StructureKind.Solar : StructureKind.Extractor;
+        private bool ContextPanelContains(Vector2 point) => SidebarVisible && Sidebar.Contains(point) || ObjectiveVisible && ObjectivePanel.Contains(point) || ConnectionPanelVisible && LinkGuidePanel.Contains(point) || DefensePanel.Contains(point) || RepairPanel.Contains(point);
+        private bool ContextPanelOverlaps(Rect rectangle) => SidebarVisible && Sidebar.Overlaps(rectangle) || ObjectiveVisible && ObjectivePanel.Overlaps(rectangle) || ConnectionPanelVisible && LinkGuidePanel.Overlaps(rectangle) || DefensePanel.Overlaps(rectangle) || RepairPanel.Overlaps(rectangle);
+        private bool BuildingTool => tool == Tool.Extractor || tool == Tool.Solar || tool == Tool.PowerPlant || tool == Tool.Turret;
+        private StructureKind BuildKind => tool == Tool.Turret ? StructureKind.Turret : tool == Tool.PowerPlant ? StructureKind.PowerPlant : tool == Tool.Solar ? StructureKind.Solar : StructureKind.Extractor;
 
         private sealed class GroundTile
         {
@@ -167,6 +170,7 @@ namespace AstraExpress
             worldRoot = new GameObject("Colony world").transform;
             ground.Clear(); terrainColliders.Clear(); ore.Clear(); decorativeRocks.Clear(); buildings.Clear(); trainVisuals.Clear(); cargoVisuals.Clear();
             extractorAnimators.Clear();
+            ResetDefenseVisuals();
             selected = null; trainSelected = false; routeStart = null; tool = Tool.Explore;
             fuelDestination = null; selectedTrainIndex = 0; confirmRestart = false;
             Simulation = new ColonySimulation();
@@ -322,6 +326,7 @@ namespace AstraExpress
             UpdateExtractorAnimations();
             UpdateFogVisuals();
             UpdatePowerVisuals();
+            UpdateDefenseVisuals();
             UpdateLinkGuide();
             UpdateNetworkPlacement();
             MoveVisual(roverVisual, Position(Simulation.RoverX, Simulation.RoverY, 0.08f));
@@ -402,7 +407,7 @@ namespace AstraExpress
                 bool powerPlant = structure.Kind == StructureKind.PowerPlant;
                 if (!extractor)
                     Box("Foundation", root, new Vector3(0, 0.04f, 0), new Vector3(structure.Size * 1.93f, 0.2f, structure.Size * 1.93f), foundationMaterial);
-                GameObject prefab = structure.Kind == StructureKind.Colony ? ColonyModel : structure.Kind == StructureKind.Solar ? SolarModel : structure.Kind == StructureKind.PowerPlant ? PowerPlantModel : ExtractorModel;
+                GameObject prefab = structure.Kind == StructureKind.Turret ? TurretModel : structure.Kind == StructureKind.Colony ? ColonyModel : structure.Kind == StructureKind.Solar ? SolarModel : structure.Kind == StructureKind.PowerPlant ? PowerPlantModel : ExtractorModel;
                 var model = Model(prefab, structure.Kind.ToString(), root, new Vector3(0, extractor ? 0 : 0.15f, 0), structure.Size * 1.8f, extractor ? structure.Size * 2.2f : structure.Kind == StructureKind.Colony || powerPlant ? 2.6f : 1.5f, extractor || structure.Kind == StructureKind.Colony || powerPlant);
                 if (extractor)
                 {
@@ -490,6 +495,7 @@ namespace AstraExpress
                 if (keyboard.digit4Key.wasPressedThisFrame) SetTool(Tool.Conduit);
                 if (keyboard.digit5Key.wasPressedThisFrame) SetTool(Tool.Rail);
                 if (keyboard.digit6Key.wasPressedThisFrame) SetTool(Tool.PowerPlant);
+                if (keyboard.digit7Key.wasPressedThisFrame) SetTool(Tool.Turret);
                 if (keyboard.rKey.wasPressedThisFrame) verticalFirst = !verticalFirst;
                 if (keyboard.cKey.wasPressedThisFrame) CenterColony();
                 if (keyboard.vKey.wasPressedThisFrame) CenterRover();
@@ -656,6 +662,7 @@ namespace AstraExpress
             }
             DrawObjective();
             DrawSelection();
+            DrawDefense();
             DrawToolbar();
             DrawLinkGuide();
             DrawBotTarget();
@@ -704,11 +711,12 @@ namespace AstraExpress
             float left = panel.x + 18;
             float width = panel.width - 36;
             GUI.Label(new Rect(left, 103, width, 22), trainSelected ? "RAIL OPERATIONS" : ConnectionSelection ? "CONNECTION STATUS" : "SELECTED BUILDING", smallStyle);
-            string title = trainSelected ? $"Locomotive {selectedTrainIndex + 1}" : selected == null ? "Rover 01" : selected.Kind == StructureKind.Colony ? "Landing colony" : selected.Kind == StructureKind.Solar ? "Solar array" : selected.Kind == StructureKind.PowerPlant ? "Fluxite power plant" : selected.Deposit.Resource == ResourceKind.Fluxite ? "Fluxite extractor" : "Ore extractor";
+            string title = trainSelected ? $"Locomotive {selectedTrainIndex + 1}" : selected == null ? "Rover 01" : selected.Kind == StructureKind.Turret ? "Laser turret" : selected.Kind == StructureKind.Colony ? "Landing colony" : selected.Kind == StructureKind.Solar ? "Solar array" : selected.Kind == StructureKind.PowerPlant ? "Fluxite power plant" : selected.Deposit.Resource == ResourceKind.Fluxite ? "Fluxite extractor" : "Ore extractor";
             titleStyle.fontSize = title.Length > 17 ? 21 : 25;
             GUI.Label(new Rect(left, 132, width, 32), title, titleStyle);
             titleStyle.fontSize = 25;
             float row = 180;
+            if (selected?.Kind == StructureKind.Turret) { DrawTurretSelection(left, width, row); return; }
             if (ConnectionSelection)
             {
                 bool rail = selected.Kind != StructureKind.Solar && Simulation.RailRoute(selected) != null;
@@ -720,7 +728,7 @@ namespace AstraExpress
             }
             if (selected != null && selected.Kind == StructureKind.Extractor)
             {
-                string status = Simulation.Paused ? "Colony paused" : selected.Paused ? "Mine paused" : !selected.Connected ? "Needs power" : selected.Stock >= selected.Storage ? "Storage full" : selected.SuppliedFraction < 0.99f ? "Low power" : "Mining";
+                string status = selected.Disabled ? "Disabled - repair" : Simulation.Paused ? "Colony paused" : selected.Paused ? "Mine paused" : !selected.Connected ? "Needs power" : selected.Stock >= selected.Storage ? "Storage full" : selected.SuppliedFraction < 0.99f ? "Low power" : "Mining";
                 Stat(left, ref row, "STATUS", status);
                 Stat(left, ref row, "STORAGE", $"{selected.Stock} / {selected.Storage} {selected.Deposit.Resource}");
                 Stat(left, ref row, "OUTPUT", $"{selected.Rate:0.##}/s / {selected.Demand:0.#} power/s");
@@ -771,7 +779,7 @@ namespace AstraExpress
             }
             else if (selected != null && selected.Kind == StructureKind.PowerPlant)
             {
-                string state = Simulation.Paused ? "Colony paused" : selected.Paused ? "Plant paused" : !selected.Connected ? "Needs power link" : selected.Stock == 0 && selected.BurnEnergy <= 0 ? "Needs fuel" : selected.Generation <= 0 ? "Battery satisfied" : "Generating";
+                string state = selected.Disabled ? "Disabled - repair" : Simulation.Paused ? "Colony paused" : selected.Paused ? "Plant paused" : !selected.Connected ? "Needs power link" : selected.Stock == 0 && selected.BurnEnergy <= 0 ? "Needs fuel" : selected.Generation <= 0 ? "Battery satisfied" : "Generating";
                 Stat(left, ref row, "STATUS", state);
                 Stat(left, ref row, "FUEL", $"{selected.Stock} / {selected.Storage} Fluxite");
                 Stat(left, ref row, "OUTPUT", $"{selected.Generation:0.#} / {ColonySimulation.PlantOutput} power/s");
@@ -788,9 +796,9 @@ namespace AstraExpress
             }
             else if (selected != null)
             {
-                Stat(left, ref row, "POWER", selected.Connected ? "CONNECTED" : "WIRE SOUTH PORT");
+                Stat(left, ref row, "POWER", selected.Disabled ? "DISABLED - REPAIR" : selected.Connected ? "CONNECTED" : "WIRE SOUTH PORT");
                 Stat(left, ref row, "SOUTH PORT", selected.Port.ToString());
-                Stat(left, ref row, selected.Kind == StructureKind.Solar ? "GENERATION" : "DEPOT", selected.Kind == StructureKind.Solar ? selected.Connected ? "+2 power / second" : "0 / 2 power per second" : "Ore arrives here for credits");
+                Stat(left, ref row, selected.Kind == StructureKind.Solar ? "GENERATION" : "DEPOT", selected.Kind == StructureKind.Solar ? selected.Connected && !selected.Disabled ? "+2 power / second" : "0 / 2 power per second" : selected.Disabled ? "Repair to unload ore" : "Ore arrives here for credits");
             }
         }
 

@@ -157,6 +157,7 @@ The repository may be ahead of the public build; [deployment records](docs/DEPLO
 - **Shared power economy:** solar generation charges a colony battery used by rover movement and working extractors.
 - **Rail logistics:** every extractor includes a free dedicated train, with no four-train cap. Connect rails to start deliveries; click its extractor for capacity upgrades and service controls.
 - **Fluxite fuel chain:** transport fictional space fuel to power plants for stronger generation.
+- **Frontier defense:** 2x2 mining attracts northwest alien waves; automated laser turrets defend buildings, and free timed repairs restore disabled structures. [Rules and controls](docs/DEFENSE.md).
 - **A readable miniature world:** windswept red terrain, a moving APC rover, crystal deposits, animated drills, and a research-pod colony.
 
 ## Run locally

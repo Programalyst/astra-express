@@ -17,7 +17,7 @@ namespace AstraExpress
     }
 
     public enum ResourceKind { Ore, Fluxite }
-    public enum StructureKind { Colony, Solar, Extractor, PowerPlant }
+    public enum StructureKind { Colony, Solar, Extractor, PowerPlant, Turret }
     public enum TrainPhase { Parked, ToMine, Loading, ToColony, Unloading, ReturningToDepot }
 
     public sealed class Deposit
@@ -46,6 +46,11 @@ namespace AstraExpress
         public float SuppliedFraction;
         public float BurnEnergy;
         public float Generation;
+        public float Health = 100;
+        public const float MaxHealth = 100;
+        public bool Disabled => Health <= 0;
+        public float RepairRemaining;
+        public float ShotCooldown;
         public Cell Port => new Cell(Origin.X, Origin.Y - 1);
         public int Storage => Kind == StructureKind.PowerPlant ? 48 : 24 * Size;
         public float Demand => Size * Level;
@@ -72,7 +77,7 @@ namespace AstraExpress
         public int Waypoint;
     }
 
-    public sealed class ColonySimulation
+    public sealed partial class ColonySimulation
     {
         public const int Width = 32;
         public const int Height = 32;
@@ -119,17 +124,19 @@ namespace AstraExpress
         private readonly HashSet<Structure> manuallyStoppedServices = new HashSet<Structure>();
         private int roverWaypoint;
 
-        public ColonySimulation()
+        public ColonySimulation(bool enableRaids = true)
         {
+            raidsEnabled = enableRaids;
             Colony = new Structure { Kind = StructureKind.Colony, Origin = new Cell(5, 7), Size = 2, Starter = true, Connected = true };
             Structures.Add(Colony);
-            Structures.Add(new Structure { Kind = StructureKind.Solar, Origin = new Cell(2, 7), Size = 2, Starter = true, Connected = true });
+            var starterSolar = new Structure { Kind = StructureKind.Solar, Origin = new Cell(2, 7), Size = 2, Starter = true };
+            Structures.Add(starterSolar);
             Deposits.Add(new Deposit { Origin = new Cell(10, 4), Size = 1 });
             Deposits.Add(new Deposit { Origin = new Cell(23, 13), Size = 1 });
             Deposits.Add(new Deposit { Origin = new Cell(13, 8), Size = 1, Resource = ResourceKind.Fluxite });
             Deposits.Add(new Deposit { Origin = new Cell(25, 25), Size = 2, Resource = ResourceKind.Fluxite });
             Deposits.Add(new Deposit { Origin = new Cell(4, 23), Size = 2, Resource = ResourceKind.Ore });
-            Conduits.Add(Colony.Port);
+            foreach (var cell in Corridor(starterSolar.Port, Colony.Port)) Conduits.Add(cell);
             Rails.Add(Colony.Port);
             Reveal(5.5f, 7.5f, 5);
             Reveal(RoverX, RoverY, 3);
@@ -216,10 +223,10 @@ namespace AstraExpress
         {
             origin = requested;
             size = kind == StructureKind.Solar || kind == StructureKind.PowerPlant ? 2 : 1;
-            cost = kind == StructureKind.PowerPlant ? PlantCost : kind == StructureKind.Solar ? 100 : 150;
+            cost = kind == StructureKind.Turret ? TurretCost : kind == StructureKind.PowerPlant ? PlantCost : kind == StructureKind.Solar ? 100 : 150;
             reason = "";
             if (!IsRevealed(requested)) { reason = "Explore this ground first."; return false; }
-            if (kind != StructureKind.Solar && kind != StructureKind.Extractor && kind != StructureKind.PowerPlant) { reason = "The colony is fixed."; return false; }
+            if (kind != StructureKind.Solar && kind != StructureKind.Extractor && kind != StructureKind.PowerPlant && kind != StructureKind.Turret) { reason = "The colony is fixed."; return false; }
             var deposit = DepositAt(requested);
             if (kind == StructureKind.Extractor)
             {
@@ -232,6 +239,9 @@ namespace AstraExpress
             }
             foreach (var cell in Footprint(origin, size))
             {
+                if (cell.Equals(AlienSpawn) || Aliens.Any(alien => Math.Abs(alien.X - cell.X) < 0.6f && Math.Abs(alien.Y - cell.Y) < 0.6f
+                    || alien.Waypoint < alien.Route.Count && alien.Route[alien.Waypoint].Equals(cell)))
+                { reason = "Keep the alien entry and occupied enemy tiles clear."; return false; }
                 if (!IsRevealed(cell)) { reason = "The complete footprint must be explored."; return false; }
                 if (Terrain.Kind(cell) != TerrainKind.Flat || Terrain.Elevation(cell) != Terrain.Elevation(origin))
                 { reason = "Buildings need a level footprint. Keep ramps and hillsides clear."; return false; }
@@ -264,7 +274,7 @@ namespace AstraExpress
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; each connected extractor's train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built with its own free train. Connect power and rails; its train dispatches when the route is complete.";
+            Message = kind == StructureKind.Turret ? "Laser turret built. Connect its south port to colony power. Each shot uses 2 battery power." : kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; each connected extractor's train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built with its own free train. Connect power and rails; its train dispatches when the route is complete.";
             if (kind == StructureKind.Extractor || kind == StructureKind.PowerPlant) AutoDispatchReadyServices();
             return true;
         }
@@ -412,8 +422,8 @@ namespace AstraExpress
                     if (Conduits.Contains(next) && Terrain.CanTraverse(current, next) && PoweredCells.Add(next)) frontier.Enqueue(next);
                 }
             }
-            foreach (var structure in Structures) structure.Connected = structure.Starter || PoweredCells.Contains(structure.Port);
-            SolarGeneration = Structures.Count(structure => structure.Kind == StructureKind.Solar && structure.Connected) * 2;
+            foreach (var structure in Structures) structure.Connected = PoweredCells.Contains(structure.Port);
+            SolarGeneration = Structures.Count(structure => structure.Kind == StructureKind.Solar && structure.Connected && !structure.Disabled) * 2;
             Generation = SolarGeneration + FuelGeneration;
         }
 
@@ -511,6 +521,7 @@ namespace AstraExpress
                 float delta = Math.Min(remaining, 0.05f);
                 StepGeneration(delta);
                 StepRover(delta);
+                StepDefense(delta);
                 StepExtractors(delta);
                 foreach (var train in Trains) StepTrain(train, delta);
                 remaining -= delta;
@@ -523,7 +534,7 @@ namespace AstraExpress
             foreach (var plant in Structures)
             {
                 plant.Generation = 0;
-                if (plant.Kind != StructureKind.PowerPlant || !plant.Connected || plant.Paused) continue;
+                if (plant.Kind != StructureKind.PowerPlant || !plant.Connected || plant.Paused || plant.Disabled) continue;
                 float requested = Math.Min(PlantOutput * delta, BatteryCapacity - Battery);
                 if (requested <= 0.00001f) continue;
                 if (plant.BurnEnergy <= 0.00001f && plant.Stock > 0)
@@ -586,11 +597,12 @@ namespace AstraExpress
                     structure.Stock++;
                     if (structure.Deposit.Resource == ResourceKind.Ore) Produced++;
                     else FuelProduced++;
+                    if (structure.Size == 2) AwakenAliens();
                 }
             }
         }
 
-        private static bool Working(Structure structure) => structure.Kind == StructureKind.Extractor && structure.Connected && !structure.Paused && structure.Stock < structure.Storage;
+        private static bool Working(Structure structure) => structure.Kind == StructureKind.Extractor && structure.Connected && !structure.Paused && !structure.Disabled && structure.Stock < structure.Storage;
 
         private void BeginLeg(FreightTrain train, bool homeward)
         {
@@ -646,6 +658,7 @@ namespace AstraExpress
             if (train.Phase == TrainPhase.Loading)
             {
                 if (train.ParkRequested) { ReturnToDepot(train); return; }
+                if (train.Source.Disabled) return;
                 int loaded = Math.Min(train.Capacity, train.Source.Stock);
                 if (loaded == 0) return;
                 train.Source.Stock -= loaded;
@@ -654,6 +667,7 @@ namespace AstraExpress
             }
             else
             {
+                if (train.Destination.Disabled) return;
                 if (train.Cargo > 0 && train.Resource == ResourceKind.Ore)
                 {
                     int payment = train.Cargo * 8;

@@ -42,6 +42,6 @@ with tempfile.TemporaryDirectory(prefix="astra-bot-control-") as directory:
     (work / "Placement.cs").write_text(shim)
     output = work / "BotControlChecks.exe"
     subprocess.run([str(mono), str(mono_root / "lib/mono/4.5/csc.exe"), "-nologo", "-langversion:latest", "-out:" + str(output),
-        str(scripts / "ColonySimulation.cs"), str(scripts / "TerrainGrid.cs"), str(work / "Control.cs"), str(work / "Placement.cs"),
+        str(scripts / "ColonySimulation.cs"), str(scripts / "ColonyDefense.cs"), str(scripts / "TerrainGrid.cs"), str(work / "Control.cs"), str(work / "Placement.cs"),
         str(Path(__file__).with_name("BotControlChecks.cs"))], check=True)
     subprocess.run([str(mono), str(output)], check=True)

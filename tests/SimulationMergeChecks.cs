@@ -26,7 +26,7 @@ class Review
     static void TerrainChecks(ColonySimulation economy)
     {
         int before = scenarioChecks;
-        var sim = new ColonySimulation();
+        var sim = new ColonySimulation(enableRaids: false);
         sim.Reveal(14, 11, 100);
         var terrain = sim.Terrain;
         foreach (var bounds in new[] { new[] { 17, 29, 3, 22 }, new[] { 1, 9, 18, 26 } })
@@ -136,7 +136,7 @@ class Review
 
     static void RoverStopChecks()
     {
-        var sim = new ColonySimulation();
+        var sim = new ColonySimulation(enableRaids: false);
         sim.Reveal(14, 11, 100);
         Reach(sim, new Cell(16, 5));
         Check(sim.OrderRover(new Cell(18, 5)), "Start rover crossing for cancellation");
@@ -161,7 +161,19 @@ class Review
     static void NetworkPlannerChecks()
     {
         int before = scenarioChecks;
-        var sim = new ColonySimulation();
+        var sim = new ColonySimulation(enableRaids: false);
+        var starter = sim.Structures.Single(building => building.Kind == StructureKind.Solar);
+        var starterRoute = ColonySimulation.Corridor(starter.Port, sim.Colony.Port);
+        Check(sim.Conduits.SetEquals(starterRoute) && starterRoute.Count == 4, "Starting solar has a visible four-tile conduit to the colony");
+        Check(starterRoute.All(sim.IsRevealed) && starterRoute.All(sim.PoweredCells.Contains), "Starting conduit is revealed and powered end to end");
+        Check(starter.Connected && sim.SolarGeneration == 2 && sim.Credits == 500 && sim.Rails.Count == 1, "Starting connection is free and adds no rail");
+        Check(sim.CanLay(starterRoute, false, out int starterCost, out _) && starterCost == 0, "Starting conduit can be reused for free");
+        sim.Conduits.Remove(new Cell(3, 6));
+        sim.Reconnect();
+        Check(!starter.Connected && sim.SolarGeneration == 0, "Starter solar obeys normal conduit connectivity instead of a hidden exemption");
+        sim.Conduits.Add(new Cell(3, 6));
+        sim.Reconnect();
+        Check(starter.Connected && sim.SolarGeneration == 2, "Restoring starter conduit restores solar generation");
         sim.Reveal(14, 11, 100);
         var solar = Build(sim, StructureKind.Solar, new Cell(9, 11));
         var start = sim.Colony.Port;
@@ -212,7 +224,7 @@ class Review
         Check(!sim.TryPlanNetworkRoute(new Cell(-1, 6), end, false, false, out _, out _, out _), "Reject an out-of-bounds endpoint");
         Check(!sim.TryPlanNetworkRoute(start, new Cell(17, 7), true, false, out _, out _, out _), "Reject a hillside endpoint");
         Check(NetworkState(sim) == snapshot, "Invalid endpoints leave existing links and balances intact");
-        var hidden = new ColonySimulation();
+        var hidden = new ColonySimulation(enableRaids: false);
         snapshot = NetworkState(hidden);
         Check(!hidden.TryPlanNetworkRoute(hidden.Colony.Port, new Cell(20, 5), false, false, out _, out _, out string hiddenReason) && !string.IsNullOrWhiteSpace(hiddenReason), "Hidden destination is rejected with a reason");
         Check(NetworkState(hidden) == snapshot, "Rejecting hidden ground does not reveal it");
@@ -223,7 +235,7 @@ class Review
         Check(NetworkState(hidden) == snapshot, "Blocked hidden detour leaves fog and networks unchanged");
 
         // A free reused alternate can be affordable when the preferred new bend is not.
-        var reuse = new ColonySimulation();
+        var reuse = new ColonySimulation(enableRaids: false);
         reuse.Reveal(14, 11, 100);
         var reuseStart = new Cell(1, 1);
         // Keep both bend options on lowland, below the northern hillside at row 15.
@@ -239,7 +251,7 @@ class Review
         Check(NetworkState(reuse) == snapshot, "Affordable route search remains read-only");
 
         // The fallback must prefer a longer free network over a shorter new route.
-        var detourReuse = new ColonySimulation();
+        var detourReuse = new ColonySimulation(enableRaids: false);
         detourReuse.Reveal(14, 11, 100);
         var southPass = ColonySimulation.Corridor(low, new Cell(16, 15))
             .Concat(ColonySimulation.Corridor(new Cell(16, 15), new Cell(18, 15)).Skip(1))
@@ -255,7 +267,7 @@ class Review
         Check(!connectionCosts.ContainsKey(new Cell(17, 7)) && !connectionCosts.ContainsKey(detourReuse.Colony.Origin), "Destination overlay excludes hillsides and buildings");
         Check(NetworkState(detourReuse) == snapshot, "Fallback and destination-cost search leave the colony unchanged");
 
-        var poor = new ColonySimulation();
+        var poor = new ColonySimulation(enableRaids: false);
         poor.Reveal(14, 11, 100);
         Build(poor, StructureKind.Solar, new Cell(1, 1));
         Build(poor, StructureKind.Solar, new Cell(5, 1));
@@ -266,14 +278,14 @@ class Review
         snapshot = NetworkState(poor);
         Check(!poor.TryPlanNetworkRoute(poor.Colony.Port, waitingSolar.Port, false, false, out _, out _, out string budgetReason) && !string.IsNullOrWhiteSpace(budgetReason), "Unaffordable route is rejected with a reason");
         Check(NetworkState(poor) == snapshot && !waitingSolar.Connected, "Failed plan does not charge or falsely connect solar");
-        Check(!poor.Lay(ColonySimulation.Corridor(poor.Colony.Port, waitingSolar.Port), false) && poor.Credits == 0 && !waitingSolar.Connected && poor.Conduits.Count == 1, "Rejected Lay is atomic and leaves solar disconnected");
+        Check(!poor.Lay(ColonySimulation.Corridor(poor.Colony.Port, waitingSolar.Port), false) && poor.Credits == 0 && !waitingSolar.Connected && poor.Conduits.SetEquals(starterRoute), "Rejected Lay is atomic and leaves solar disconnected");
         Check(poor.TryPlanNetworkRoute(poor.Colony.Port, poor.Colony.Port, true, false, out var samePort, out int sameCost, out _) && samePort.Count == 1 && sameCost == 0, "A valid existing port needs no new rails or credits");
         Console.WriteLine("PASS networkPlannerScenarioAssertions=" + (scenarioChecks - before));
     }
 
     static void AutoDispatchChecks()
     {
-        var sim = new ColonySimulation();
+        var sim = new ColonySimulation(enableRaids: false);
         sim.Reveal(16, 16, 100);
         var ore = Build(sim, StructureKind.Extractor, new Cell(10, 4));
         Check(sim.Lay(new[] { ore.Port }, true), "Lay disconnected extractor rail stub");
@@ -299,7 +311,7 @@ class Review
         Check(!sim.Trains.Any(train => train.Source == ore), "Connection changes do not restart manually stopped service");
         Check(sim.Dispatch(ore), "Manually stopped service can be explicitly restarted");
 
-        var fuelSim = new ColonySimulation();
+        var fuelSim = new ColonySimulation(enableRaids: false);
         fuelSim.Reveal(16, 16, 100);
         var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 8));
         Link(fuelSim, fuel, true);
@@ -310,7 +322,7 @@ class Review
         Check(fuelSim.Train.Source == fuel && fuelSim.Train.Destination == plant, "Connecting plant last automatically starts Fluxite delivery");
         Check(fuelSim.Train.Resource == ResourceKind.Fluxite, "Automatic fuel service carries the right resource");
 
-        var prewired = new ColonySimulation();
+        var prewired = new ColonySimulation(enableRaids: false);
         prewired.Reveal(16, 16, 100);
         Check(prewired.Lay(prewired.FindPath(prewired.Colony.Port, new Cell(10, 3), cell => prewired.StructureAt(cell) == null && prewired.DepositAt(cell) == null), true), "Lay rails before extractor construction");
         var prewiredOre = Build(prewired, StructureKind.Extractor, new Cell(10, 4));
@@ -319,7 +331,8 @@ class Review
 
     static void Main()
     {
-        var layout = new ColonySimulation();
+        DefenseChecks.Run();
+        var layout = new ColonySimulation(enableRaids: false);
         var rocks = layout.DecorativeRockCells();
         Check(rocks.Count == 24 && rocks.SequenceEqual(layout.DecorativeRockCells()), "Sparse rock layout is deterministic");
         foreach (var rock in rocks)
@@ -355,7 +368,7 @@ class Review
         }
         Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(4, 23))?.Size == 2 && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "2x2 ore occupies the former northern Fluxite site");
         Check(layout.DepositAt(new Cell(25, 25))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(25, 25)) == 0, "2x2 Fluxite occupies (25, 25) on low ground north of the eastern plateau");
-        var sim=new ColonySimulation(); Check(sim.Trains.Count == 0 && sim.Train == null, "No unowned starter train"); Check(!sim.UpgradeTrain(), "No train upgrade before an extractor exists"); sim.Reveal(14,11,100);
+        var sim=new ColonySimulation(enableRaids: false); Check(sim.Trains.Count == 0 && sim.Train == null, "No unowned starter train"); Check(!sim.UpgradeTrain(), "No train upgrade before an extractor exists"); sim.Reveal(14,11,100);
         var ore=Build(sim,StructureKind.Extractor,new Cell(10,4)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");
         var fuel=Build(sim,StructureKind.Extractor,new Cell(13,8));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);

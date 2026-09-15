@@ -16,10 +16,10 @@
       "This extractor includes its own free train. Restart its parked service; other mines keep their trains.",
       ["Press 1 and select this extractor.", "Click Restart train in its sidebar."], b.origin);
   }
-  const buildingName = b => b?.kind === "Solar" ? "solar array" : b?.kind === "PowerPlant" ? "power plant" : "extractor";
+  const buildingName = b => b?.kind === "Turret" ? "laser turret" : b?.kind === "Colony" ? "colony" : b?.kind === "Solar" ? "solar array" : b?.kind === "PowerPlant" ? "power plant" : "extractor";
   function smartPlacementTip(s) {
     const rail = s.tool === "Rail";
-    const buildings = (s.buildings || []).filter(b => b.kind === "Extractor" || b.kind === "PowerPlant" || (!rail && b.kind === "Solar"));
+    const buildings = (s.buildings || []).filter(b => b.kind === "Extractor" || b.kind === "PowerPlant" || (!rail && (b.kind === "Solar" || b.kind === "Turret")));
     const available = p => (s.connectionTargets || []).find(t => same(t, p) && !same(t, s.routeStart));
     let target = same(s.routeStart, s.colonyPort) ? null : available(s.colonyPort);
     if (same(s.routeStart, s.colonyPort)) {
@@ -51,11 +51,12 @@
     const name = same(target, s.colonyPort) ? "colony port" : same(target, b.port) ? `${buildingName(b)} port` : "route tile";
     const step = `Click the highlighted ${name}.`;
     const purpose = rail ? b.kind === "PowerPlant" ? "Rails let Fluxite reach this plant." : isFuel(b) ? "Rails carry Fluxite to its plant." : "Rails let a train collect ore."
-      : b.kind === "Solar" ? "Power this solar array." : b.kind === "PowerPlant" ? "The plant also needs delivered Fluxite." : "Power is required before mining starts.";
+      : b.kind === "Turret" ? "Power this turret so it can fire automatically." : b.kind === "Solar" ? "Power this solar array." : b.kind === "PowerPlant" ? "The plant also needs delivered Fluxite." : "Power is required before mining starts.";
     return {...tip(`${noun}-${b.origin.x}-${b.origin.y}`, step, `${purpose} Connection: ${route.cost} credits.`, [step], target),
       link:{tool:rail ? "Rail" : "Conduit", origin:b.origin}, autoCue:true, primaryStep:step};
   }
   function constructionIntent(s) {
+    if (s.tool === "Turret") return tip("place-turret", "Place a defensive laser turret", s.placementReason || "150 credits, 1x1 clear explored tile, then connect the south port to power.", ["Use the cyan seven-tile range preview to cover approaches to buildings."], null);
     if (!["Solar", "Extractor", "PowerPlant"].includes(s.tool)) return null;
     if (s.tool === "Extractor") {
       const deposits = s.deposits || [];
@@ -97,6 +98,13 @@
     if (s.routeStarted) return [tip(`route-preview-${s.tool}-${s.routeStart?.x}-${s.routeStart?.y}`, "Check the route preview",
       s.placementReason || "Choose an explored, clear endpoint.",
       ["Move to a clear destination tile.", "Click a valid preview, or Escape to cancel."], null)];
+    const damaged = (s.buildings || []).find(b => b.disabled && same(b.origin, s.selected)) || (s.buildings || []).find(b => b.disabled);
+    if (damaged) return [tip("repair-building", `Repair the disabled ${buildingName(damaged)}`, damaged.repairRemaining > 0 ? "Repairs are underway; incoming damage interrupts them." : "Disabled buildings keep their cargo and layout. Repairs take 10 seconds and need no credits or power.",
+      ["Press 1, select the disabled building, and click Repair beneath its sidebar."], damaged.origin)];
+    const selectedTurret = (s.buildings || []).find(b => b.kind === "Turret" && same(b.origin, s.selected));
+    if (selectedTurret && !selectedTurret.connected) return [routeTip(s, selectedTurret, false)];
+    if (s.raidsStarted && s.tool === "Explore" && !(s.buildings || []).some(b => b.kind === "Turret" && b.connected && !b.disabled))
+      return [tip("defend-base", "Prepare for northwest alien waves", "Large-scale mining has awakened aliens. Wired laser turrets defend a seven-tile radius using 2 battery power per shot.", ["Choose Laser turret in Frontier Defense or press 7, place it on clear explored ground, then connect its south port."], null)];
     if (s.battery < 20 && s.demand > s.generation) {
       const active = ordered.find(b => b.connected && !b.paused && b.stock < b.storage);
       if (active) return [tip(`power-low-${active.origin.x}-${active.origin.y}`, "Let the battery recover",
@@ -256,9 +264,9 @@
     return JSON.stringify([s.session, s.paused, s.tool, s.routeStarted, s.routeStart?.x, s.routeStart?.y, s.selected?.x, s.selected?.y,
       s.smartRouting, s.smartRouting ? (s.connectionTargets || []).map(p => [p.x,p.y]) : null,
       s.trainSelected, s.selectedTrainIndex, s.trainPhase === "Parked", s.trainParkRequested, s.capacityLevel, s.solarGeneration ?? s.generation,
-      s.idleTrains, s.trainCount, s.canBuyTrain, s.fuelDestination?.x, s.fuelDestination?.y,
+      s.idleTrains, s.trainCount, s.canBuyTrain, s.fuelDestination?.x, s.fuelDestination?.y, s.raidsStarted,
       (s.trains || []).map(t => [t.index,t.phase === "Parked",t.parkRequested,t.resource,t.capacityLevel,t.source?.x,t.source?.y,t.destination?.x,t.destination?.y,t.waitingForFuelSpace]),
-      (s.buildings || []).map(b => [b.origin.x,b.origin.y,b.connected,b.railConnected,b.paused,b.level,b.served,b.resource,b.destination?.x,b.destination?.y,b.destinationRailConnected,
+      (s.buildings || []).map(b => [b.origin.x,b.origin.y,b.connected,b.railConnected,b.paused,b.level,b.served,b.resource,b.destination?.x,b.destination?.y,b.destinationRailConnected,b.disabled,b.repairRemaining > 0,
         b.kind === "PowerPlant" && [b.stock === 0,b.stock >= b.storage],
         ...[b.powerRoute,b.railRoute,b.destinationRailRoute].map(r => r && [r.possible,r.cost,r.nextSegment,(r.stops || []).map(p => [p.x,p.y])])]),
       options.map(o => [o.id,o.steps,o.target?.x,o.target?.y,o.uiTarget,o.autoCue]), s.placementReason]);

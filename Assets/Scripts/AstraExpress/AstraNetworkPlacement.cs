@@ -20,7 +20,7 @@ namespace AstraExpress
         private Cell NetworkEndpoint(Cell requested)
         {
             var building = Simulation.IsRevealed(requested) ? Simulation.StructureAt(requested) : null;
-            if (building != null && (tool == Tool.Conduit || building.Kind != StructureKind.Solar)) return building.Port;
+            if (building != null && (tool == Tool.Conduit || building.Kind != StructureKind.Solar && building.Kind != StructureKind.Turret)) return building.Port;
             return requested;
         }
 
@@ -54,7 +54,7 @@ namespace AstraExpress
                 .Where(pair => pair.Value <= Simulation.Credits).ToDictionary(pair => pair.Key, pair => pair.Value) : new Dictionary<Cell, int>();
             networkPortOptions.Clear();
             foreach (var building in Simulation.Structures)
-                if ((!rail || building.Kind != StructureKind.Solar) && (!building.Starter || building == Simulation.Colony || Simulation.PoweredCells.Contains(building.Port)) && Simulation.IsRevealed(building.Port) &&
+                if ((!rail || building.Kind != StructureKind.Solar && building.Kind != StructureKind.Turret) && (!building.Starter || building == Simulation.Colony || Simulation.PoweredCells.Contains(building.Port)) && Simulation.IsRevealed(building.Port) &&
                     (!routeStart.HasValue ? Simulation.CanLay(new[] { building.Port }, rail, out _, out _) : networkOptions.ContainsKey(building.Port)))
                     networkPortOptions.Add(building);
             if (networkOptionsMaterial == null)
@@ -118,7 +118,7 @@ namespace AstraExpress
             foreach (var building in networkPortOptions)
             {
                 if (routeStart.HasValue && routeStart.Value.Equals(building.Port)) continue;
-                string name = building.Kind == StructureKind.Colony ? "COLONY" : building.Kind == StructureKind.Solar ? "SOLAR" : building.Kind == StructureKind.PowerPlant ? "PLANT" : "MINE";
+                string name = building.Kind == StructureKind.Colony ? "COLONY" : building.Kind == StructureKind.Solar ? "SOLAR" : building.Kind == StructureKind.Turret ? "TURRET" : building.Kind == StructureKind.PowerPlant ? "PLANT" : "MINE";
                 string label = routeStart.HasValue ? name + " · CONNECT" : name + " · START";
                 if (!NetworkMarkerRect(building.Port, out Rect marker)) continue;
                 Fill(marker, new Color(0.035f, 0.07f, 0.1f, 0.96f));

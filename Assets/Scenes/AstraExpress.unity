@@ -553,6 +553,8 @@ MonoBehaviour:
   SolarModel: {fileID: 919132149155446097, guid: f44dc91195ee348e7b46380fe9a7e0a1, type: 3}
   ExtractorModel: {fileID: 1523932454943420619, guid: 880742a3628f74e1aa8dc503bd925ac1, type: 3}
   PowerPlantModel: {fileID: 1122383170532760, guid: 27a34fd78817a9745b65cb6f56659798, type: 3}
+  AlienModel: {fileID: 919132149155446097, guid: cb504122a44a7469494af332f2ca7c6b, type: 3}
+  TurretModel: {fileID: 919132149155446097, guid: 227ffb2e80d764a73b574d3e96ae31f3, type: 3}
   OreModel: {fileID: 4735512976588214479, guid: 59a09c54aaea0468d9b58a5507f80a7e, type: 3}
   DecorativeRockModel: {fileID: 8416275626360470423, guid: 33b7722c77da043ab8928a6a4b324a54, type: 3}
   FluxiteModel: {fileID: 5116399067178782739, guid: ce96462a755d44dffaf9ba15c5fb4009, type: 3}
@@ -562,6 +564,7 @@ MonoBehaviour:
   HillsideModel: {fileID: 820959572976628442, guid: 6171ae96c11da4595800b8d903046334, type: 3}
   HillsideCornerModel: {fileID: 919132149155446097, guid: 99b4a9f96d48846a18b75668952caa86, type: 3}
   SurfaceTemplate: {fileID: 2100000, guid: b816bb5a564bc45bdb78749964b0cd16, type: 2}
+  LaserMaterial: {fileID: 2100000, guid: 4f022484a5f0947beae03127f6afa206, type: 2}
   TerrainSurfaceMaterial: {fileID: 0}
   TerrainTextureRepeat: 6
   diagnostics: 

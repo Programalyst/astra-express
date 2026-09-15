@@ -53,6 +53,12 @@ public static class AstraExpressEditor
                 Status("validated", "Continuous ground checks passed.");
                 return;
             }
+            if (action == "defensecheck")
+            {
+                AstraDefensePlaytest.Prepare();
+                Status("validated", "Defense fixture paused on a live laser shot; exit Play Mode to discard.");
+                return;
+            }
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode before running Editor jobs.");
             if (action == "setup") CreateScene();
             else if (action == "reloadscene")
@@ -109,11 +115,14 @@ public static class AstraExpressEditor
         RenderSettings.ambientLight = new Color(0.57f, 0.64f, 0.77f);
         var game = new GameObject("Astra Express").AddComponent<AstraGame>();
         game.SurfaceTemplate = surface;
+        game.LaserMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Red Laser.mat");
         game.RoverModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/Vehicles/SM_Veh_Apc_01.prefab");
         game.ColonyModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Buildings/SM_Bld_Pod_Research_05.prefab");
         game.SolarModel = LoadModel("Assets/Kenny/kenney_city-kit-industrial_2.0/Models/FBX format/solar-panel-landscape-group.fbx");
         game.ExtractorModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/SM_Prop_Drill_03.prefab");
         game.PowerPlantModel = LoadModel("Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/SM_Prop_PowerGenerator_01.prefab");
+        game.AlienModel = LoadModel(SpaceRoot + "alien.fbx");
+        game.TurretModel = LoadModel(SpaceRoot + "turret_single.fbx");
         game.OreModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Orefield.prefab");
         game.DecorativeRockModel = LoadModel("Assets/Kenny/rock_largeA_var1.prefab");
         game.FluxiteModel = LoadModel("Assets/Imported/NuclearKnights/Prefabs/Environment/Single Crystal.prefab");

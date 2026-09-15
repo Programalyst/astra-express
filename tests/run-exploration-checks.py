@@ -13,7 +13,7 @@ runtime = args.unity / 'Contents/Resources/Scripting/MonoBleedingEdge'
 with tempfile.TemporaryDirectory(prefix='astra-exploration-checks-') as directory:
     output = Path(directory) / 'ExplorationChecks.exe'
     sources = [args.project / 'Assets/Scripts/AstraExpress' / name for name in
-               ['ColonySimulation.cs', 'TerrainGrid.cs', 'AstraBotExploration.cs']]
+               ['ColonySimulation.cs', 'ColonyDefense.cs', 'TerrainGrid.cs', 'AstraBotExploration.cs']]
     subprocess.run([str(runtime / 'bin/mono'), str(runtime / 'lib/mono/4.5/csc.exe'),
                     '-nologo', '-langversion:latest', '-out:' + str(output),
                     *map(str, sources), str(Path(__file__).with_name('ExplorationChecks.cs'))], check=True)

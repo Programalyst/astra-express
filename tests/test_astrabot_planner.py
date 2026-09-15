@@ -41,6 +41,28 @@ def prepared_expansion(data):
 
 
 class PlanValidationTests(unittest.TestCase):
+    def test_disabled_mine_cannot_complete_powered_expansion(self):
+        data = request_data()
+        data['goal'] = 'Expand to one working Ore extractor with solar power'
+        data['state'].update(buildings=[mine(disabled=True)], solarGeneration=2)
+        objective = prepared_expansion(data)['serverProgress']['expansionObjective']
+        self.assertFalse(objective['goalSatisfied'])
+        self.assertEqual(objective['connectedTargetCount'], 0)
+        self.assertEqual(objective['disabledTargetOrigins'], [{'x': 11, 'y': 7}])
+        repair = planner.guarded_power_expansion(data, objective)
+        self.assertEqual(repair['status'], 'blocked')
+        self.assertEqual(repair['actions'], [])
+        self.assertIn('Repair', repair['title'])
+
+    def test_disabled_solar_is_not_counted_as_fallback_generation(self):
+        data = request_data()
+        data['goal'] = 'Expand to one working Ore extractor with solar power'
+        data['state'].pop('solarGeneration', None)
+        data['state']['buildings'] = [mine(), {'kind': 'Solar', 'origin': {'x': 2, 'y': 7}, 'connected': True, 'disabled': True}]
+        objective = prepared_expansion(data)['serverProgress']['expansionObjective']
+        self.assertEqual(objective['solarGeneration'], 0)
+        self.assertFalse(objective['goalSatisfied'])
+
     def test_model_router_keeps_only_pure_rover_discovery_on_mini(self):
         mini = 'gpt-5.4-mini'; astra = 'gpt-6-astra'
         for goal in ['Discover the map with the rover', 'Uncover fog of war', 'Automatically discover new ore', 'Survey and reveal more of the map']:
