@@ -11,7 +11,7 @@ namespace AstraExpress
         [Serializable] private sealed class BotCommand
         {
             public string id, session, type;
-            public int x = -1, y = -1, targetX = -1, targetY = -1, seconds = 5;
+            public int x = -1, y = -1, targetX = -1, targetY = -1, trainIndex = -1, seconds = 5;
         }
         private Coroutine botRoutine;
         private Func<float> companionArrivalWait;
@@ -110,13 +110,13 @@ namespace AstraExpress
             if ((command.type == "auto_explore" || command.type == "explore") && Simulation.RoverMoving && !botRoverOrder)
             { FinishBot(false, "The player is moving the rover. AstraBot yielded control.", "cancelled"); yield break; }
             if (command.type == "auto_explore") { yield return BotAutoExplore(); yield break; }
-            if (command.type == "buy_train")
+            if (command.type == "buy_train") { FinishBot(false, "Each extractor includes its own free train. Separate train purchases are unavailable."); yield break; }
+            if (command.type == "select" && command.x < 0 && command.y < 0 && command.trainIndex >= 0)
             {
-                botActionMessage = "Buying the approved locomotive";
-                yield return new WaitForSecondsRealtime(0.65f);
-                if (Simulation.Paused) { FinishBot(false, "Colony paused before purchase."); yield break; }
-                bool bought = Simulation.BuyTrain();
-                FinishBot(bought, Simulation.Message); yield break;
+                if (command.trainIndex >= Simulation.Trains.Count) { FinishBot(false, "Choose a known extractor train."); yield break; }
+                var owner = Simulation.Trains[command.trainIndex].Owner;
+                if (owner == null) { FinishBot(false, "This train has no extractor."); yield break; }
+                command.x = owner.Origin.X; command.y = owner.Origin.Y;
             }
             var cell = new Cell(command.x, command.y);
             if (!ColonySimulation.InBounds(cell)) { FinishBot(false, "Choose a tile inside the map."); yield break; }

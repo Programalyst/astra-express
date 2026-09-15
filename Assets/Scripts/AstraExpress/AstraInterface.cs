@@ -161,7 +161,8 @@ namespace AstraExpress
 
         private string TrainStatus(FreightTrain train = null)
         {
-            train = train ?? Simulation.Trains[Mathf.Clamp(selectedTrainIndex, 0, Simulation.Trains.Count - 1)];
+            train = train ?? Simulation.TrainFor(selected) ?? Simulation.Train;
+            if (train == null) return "Build an extractor for a free train";
             if (train.Phase == TrainPhase.Parked) return "Parked at colony";
             if (train.Phase == TrainPhase.Unloading && train.Resource == ResourceKind.Fluxite && train.Cargo > 0 && train.Destination != null && train.Destination.Stock >= train.Destination.Storage) return "Plant full: waiting";
             if (train.Phase == TrainPhase.ReturningToDepot) return "Returning to depot";

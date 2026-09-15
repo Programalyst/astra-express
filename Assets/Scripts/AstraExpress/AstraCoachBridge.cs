@@ -51,7 +51,7 @@ namespace AstraExpress
             public int index, cargo, capacity, capacityLevel;
             public string phase, status, resource;
             public bool parkRequested, waitingForFuelSpace;
-            public CoachPoint position, source, destination;
+            public CoachPoint position, owner, source, destination;
         }
         [Serializable] private sealed class CoachAnchor
         {
@@ -65,7 +65,6 @@ namespace AstraExpress
             void Add(string id, string label, Rect rect) => anchors.Add(new CoachAnchor { id = id, label = label, x = rect.x / UiWidth, y = rect.y / UiHeight, width = rect.width / UiWidth, height = rect.height / UiHeight });
             string[] names = { "explore", "extractor", "solar", "conduit", "rail", "plant" };
             for (int i = 0; i < names.Length; i++) Add("tool-" + names[i], names[i], new Rect(28 + i * 147, UiHeight - 75, 139, 44));
-            Add("fleet", "Fleet", new Rect(910, UiHeight - 75, 139, 44));
             Add("pause", Simulation.Paused ? "Resume" : "Pause", new Rect(UiWidth - 214, 17, 92, 36));
             if (ConnectionPanelVisible) Add("connection-cancel", NetworkTool ? "Cancel connection" : "Dismiss connection status", ConnectionCancelRect);
             if (!SidebarVisible || NetworkTool) return anchors.ToArray();
@@ -75,15 +74,10 @@ namespace AstraExpress
                     !selected.Connected ? "Show power connection" : "Show rail connection", ConnectionActionRect);
                 return anchors.ToArray();
             }
-            if (trainSelected) {
-                Add("buy-train", "Buy train", new Rect(Sidebar.x + 18, 397, Sidebar.width - 36, 32));
-                Add("train-park", "Park at colony", new Rect(Sidebar.x + 18, 319, Sidebar.width - 36, 32));
-                Add("train-capacity", "Upgrade capacity", new Rect(Sidebar.x + 18, 358, Sidebar.width - 36, 32));
-                Add("train-next", "Next locomotive", new Rect(Sidebar.xMax - 66, 180, 48, 27));
-            }
-            else if (selected != null && selected.Kind == StructureKind.Extractor)
+            if (selected != null && selected.Kind == StructureKind.Extractor)
             {
                 Add("primary-action", "Mine action", new Rect(Sidebar.x + 18, 356, Sidebar.width - 36, 36));
+                Add("train-capacity", "Upgrade train capacity", new Rect(Sidebar.x + 18, 457, Sidebar.width - 36, 34));
                 Add("mine-pause", selected.Paused ? "Resume mine" : "Pause mine", new Rect(Sidebar.x + 18, 416, 112, 34));
                 if (selected.Deposit.Resource == ResourceKind.Fluxite) Add("fuel-destination", "Choose fuel destination", new Rect(Sidebar.x + 18, 324, Sidebar.width - 36, 26));
             }
@@ -113,9 +107,9 @@ namespace AstraExpress
             public CoachAnchor[] uiAnchors, uiPanels;
             public CoachRoute solarSitePowerRoute, pickedSitePowerRoute;
             public int credits, produced, sold, deliveries, capacity, capacityLevel, cargo;
-            public int selectedTrainIndex, idleTrains, trainCount, maxTrains, trainCost, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
+            public int selectedTrainIndex, idleTrains, trainCount, plantCost, fuelProduced, fuelDelivered, fuelConsumed;
             public float battery, generation, demand, elapsed, solarGeneration, fuelGeneration, plantOutput, fuelEnergy, companionScreenX, companionScreenY, companionDockX, companionDockY;
-            public bool paused, roverMoving, routeStarted, trainParkRequested, trainSelected, canBuyTrain;
+            public bool paused, roverMoving, routeStarted, trainParkRequested, trainSelected, extractorOwnedTrains = true;
             public CoachPoint rover, colonyPort, selected, routeStart, frontier, solarSite, plantSite, fuelDestination;
             public CoachBuilding[] buildings;
             public CoachDeposit[] deposits;
@@ -249,8 +243,8 @@ namespace AstraExpress
             coachTimer += Time.unscaledDeltaTime;
             if (coachTimer < 0.75f) return;
             coachTimer = 0;
-            int trainIndex = Mathf.Clamp(selectedTrainIndex, 0, Simulation.Trains.Count - 1);
-            var currentTrain = Simulation.Trains[trainIndex];
+            var currentTrain = Simulation.TrainFor(selected) ?? Simulation.Train;
+            int trainIndex = currentTrain == null ? -1 : Simulation.Trains.IndexOf(currentTrain);
             var currentDestination = CoachFuelDestination(selected);
             Vector3 companionView = companionVisual != null ? worldCamera.WorldToViewportPoint(CompanionCenter()) : new Vector3(-1, -1, 0);
             var state = new CoachState {
@@ -267,12 +261,10 @@ namespace AstraExpress
                 colonyPort = CoachPosition(Simulation.Colony.Port), message = Simulation.Message,
                 selectedKind = selected == null ? "" : selected.Kind.ToString(), selected = selected == null ? null : CoachPosition(selected.Origin),
                 routeStarted = routeStart.HasValue, routeStart = routeStart.HasValue ? CoachPosition(routeStart.Value) : null,
-                trainPhase = currentTrain.Phase.ToString(), trainParkRequested = currentTrain.ParkRequested,
-                capacity = currentTrain.Capacity, capacityLevel = currentTrain.CapacityLevel, cargo = currentTrain.Cargo,
+                trainPhase = currentTrain?.Phase.ToString() ?? "None", trainParkRequested = currentTrain?.ParkRequested ?? false,
+                capacity = currentTrain?.Capacity ?? 0, capacityLevel = currentTrain?.CapacityLevel ?? 0, cargo = currentTrain?.Cargo ?? 0,
                 trainSelected = trainSelected, selectedTrainIndex = trainIndex,
                 idleTrains = Simulation.Trains.Count(train => train.Phase == TrainPhase.Parked), trainCount = Simulation.Trains.Count,
-                trainCost = ColonySimulation.TrainCost, maxTrains = ColonySimulation.MaxTrains,
-                canBuyTrain = Simulation.Trains.Count < ColonySimulation.MaxTrains && Simulation.Credits >= ColonySimulation.TrainCost,
                 plantCost = ColonySimulation.PlantCost, plantOutput = ColonySimulation.PlantOutput, fuelEnergy = ColonySimulation.FuelEnergy,
                 solarGeneration = Simulation.SolarGeneration, fuelGeneration = Simulation.FuelGeneration,
                 fuelProduced = Simulation.FuelProduced, fuelDelivered = Simulation.FuelDelivered, fuelConsumed = Simulation.FuelConsumed,
@@ -288,6 +280,7 @@ namespace AstraExpress
                 index = index, phase = train.Phase.ToString(), status = TrainStatus(train), resource = train.Resource.ToString(),
                 cargo = train.Cargo, capacity = train.Capacity, capacityLevel = train.CapacityLevel, parkRequested = train.ParkRequested,
                 position = CoachPosition(new Cell((int)Math.Round(train.X), (int)Math.Round(train.Y))),
+                owner = train.Owner == null ? null : CoachPosition(train.Owner.Origin),
                 source = train.Source == null ? null : CoachPosition(train.Source.Origin),
                 destination = train.Destination == null ? null : CoachPosition(train.Destination.Origin),
                 waitingForFuelSpace = train.Phase == TrainPhase.Unloading && train.Resource == ResourceKind.Fluxite && train.Cargo > 0 && train.Destination != null && train.Destination.Stock >= train.Destination.Storage

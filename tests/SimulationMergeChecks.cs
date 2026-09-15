@@ -214,7 +214,8 @@ class Review
         var reuseEnd = new Cell(16, 14);
         var existing = ColonySimulation.Corridor(reuseStart, reuseEnd, true);
         Check(reuse.Lay(existing, false), "Create existing alternate conduit route");
-        Check(reuse.BuyTrain() && reuse.BuyTrain(), "Spend budget on two locomotives for affordability fixture");
+        Build(reuse, StructureKind.Extractor, new Cell(10, 4));
+        Build(reuse, StructureKind.Extractor, new Cell(12, 16));
         Build(reuse, StructureKind.Solar, new Cell(8, 4));
         Check(!reuse.CanLay(ColonySimulation.Corridor(reuseStart, reuseEnd), false, out _, out _), "Preferred new bend exceeds the remaining credits");
         snapshot = NetworkState(reuse);
@@ -229,7 +230,7 @@ class Review
             .Concat(ColonySimulation.Corridor(new Cell(18, 15), high).Skip(1)).ToList();
         Check(detourReuse.Lay(southPass, false), "Create a longer existing route through the south pass");
         Build(detourReuse, StructureKind.PowerPlant, new Cell(14, 1));
-        Check(detourReuse.BuyTrain(), "Reserve a train while testing a tight routing budget");
+        Build(detourReuse, StructureKind.Extractor, new Cell(10, 4));
         Check(detourReuse.Lay(ColonySimulation.Corridor(new Cell(0, 0), new Cell(12, 7)), true) && detourReuse.Credits == 2, "Leave insufficient credits for the short northern detour");
         snapshot = NetworkState(detourReuse);
         Check(detourReuse.TryPlanNetworkRoute(low, high, false, false, out var freeDetour, out int freeDetourCost, out _) && freeDetourCost == 0 && freeDetour.Contains(new Cell(17, 15)) && freeDetour.All(detourReuse.Conduits.Contains), "Fallback selects the longer free southern network");
@@ -273,10 +274,8 @@ class Review
         Check(sim.Sold > 0, "Automatically dispatched service earns credits");
         var secondOre = Build(sim, StructureKind.Extractor, new Cell(12, 16));
         Link(sim, secondOre, true);
-        Check(sim.Train.Source == ore && !sim.Trains.Any(train => train.Source == secondOre), "Busy train is not stolen for a new route");
-        Check(sim.Message.Contains("Fleet"), "No-idle-train message points to Fleet");
-        Check(sim.BuyTrain(), "Buy train for waiting ready route");
-        Check(sim.Trains[1].Source == secondOre, "Purchased train automatically serves waiting extractor");
+        Check(sim.Train.Source == ore && sim.TrainFor(secondOre).Source == secondOre, "New mine uses its own train without stealing the existing service");
+        Check(sim.Trains.Count == 2, "Each extractor adds exactly one free train");
         sim.ParkTrain(assigned);
         Advance(sim, 120);
         Check(assigned.Phase == TrainPhase.Parked && assigned.Source == null, "Manual parking finishes and returns to depot");
@@ -336,11 +335,11 @@ class Review
             Check(!layout.FullyRevealed(deposit), "Resource sites require exploration");
         }
         Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "Moved Fluxite stays on northern plateau");
-        var sim=new ColonySimulation(); sim.Reveal(14,11,100);
+        var sim=new ColonySimulation(); Check(sim.Trains.Count == 0 && sim.Train == null, "No unowned starter train"); Check(!sim.UpgradeTrain(), "No train upgrade before an extractor exists"); sim.Reveal(14,11,100);
         var ore=Build(sim,StructureKind.Extractor,new Cell(10,4)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");
-        Check(sim.BuyTrain(),"Buy second train");var second=sim.Trains[1];Check(sim.UpgradeTrain(second),"Upgrade selected second");Check(second.Capacity==8 && sim.Train.Capacity==4,"Only selected second upgraded");
         var fuel=Build(sim,StructureKind.Extractor,new Cell(13,8));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
+        var second = sim.TrainFor(fuel); Check(sim.UpgradeTrain(second), "Upgrade owned fuel train"); Check(second.Capacity == 8 && sim.Train.Capacity == 4, "Upgrade affects only owning mine");
         plant.Paused=true;Check(second.Source==fuel && second.Destination==plant,"Automatic fuel dispatch");int soldBefore=sim.Sold,creditsBefore=sim.Credits;Advance(sim,300);
         Check(sim.Sold>soldBefore,"Ore continues while fuel service runs");Check(sim.Credits-creditsBefore==(sim.Sold-soldBefore)*8,"Only ore credits awarded");Check(sim.FuelDelivered>0,"Fluxite delivery");Check(sim.FuelConsumed==0,"Paused plant does not burn");Check(plant.Stock==plant.Storage,"Plant fills to capacity");
         Check(second.Cargo>0 && second.Phase==TrainPhase.Unloading,"Full plant retains waiting fuel cargo");int retained=second.Cargo;sim.ParkTrain(second);Advance(sim,30);Check(second.Cargo==retained,"Park request retains blocked cargo");Check(second.Phase==TrainPhase.Unloading && second.ParkRequested,"Park waits for safe cargo delivery");Check(sim.Train.Source==ore && !sim.Train.ParkRequested,"Other train not parked");
@@ -349,8 +348,19 @@ class Review
         int duplicateCredits=sim.Credits;Check(!sim.Dispatch(ore),"Duplicate service rejected");Check(sim.Credits==duplicateCredits,"Rejected dispatch does not charge");
         for(int i=0;i<300 && !(sim.Train.Phase==TrainPhase.ToColony&&sim.Train.Cargo>0);i++) Advance(sim,.25f);
         Check(sim.Train.Phase==TrainPhase.ToColony && sim.Train.Cargo>0,"Ore train carries cargo before parking");int soldAtPark=sim.Sold;int oreCargo=sim.Train.Cargo;sim.ParkTrain(sim.Train);Advance(sim,30);Check(sim.Train.Phase==TrainPhase.Parked && sim.Train.Cargo==0,"Ore train parks after unloading");Check(sim.Sold-soldAtPark>=oreCargo,"Parking ore cargo sold");Check(second.Source==fuel && !second.ParkRequested,"Fuel service unchanged by parking ore train");
-        Check(sim.BuyTrain(),"Buy third train");Check(sim.BuyTrain(),"Buy fourth train");int maxCredits=sim.Credits;Check(!sim.BuyTrain(),"Fifth train rejected");Check(sim.Trains.Count==4 && sim.Credits==maxCredits,"Fleet limit preserves money");
         TerrainChecks(sim);
+        foreach (var deposit in sim.Deposits.Where(deposit => deposit.Extractor == null).ToList())
+        {
+            int before = sim.Credits;
+            var mine = Build(sim, StructureKind.Extractor, deposit.Origin);
+            Check(before - sim.Credits == deposit.Price, "Train is included in extractor cost");
+            Check(sim.TrainFor(mine)?.Owner == mine, "New train has permanent extractor ownership");
+        }
+        Check(sim.Trains.Count == 5, "Five extractors own five trains without the former four-train cap");
+        Check(sim.Trains.Select(train => train.Owner).Distinct().Count() == 5, "Each train has a unique owner");
+        Check(sim.TrainFor(ore).Owner == ore && sim.TrainFor(fuel).Owner == fuel, "Parking retains ownership");
+        int failedCredits = sim.Credits;
+        Check(!sim.Build(StructureKind.Extractor, ore.Origin) && sim.Trains.Count == 5 && sim.Credits == failedCredits, "Duplicate build creates no train and charges nothing");
         RoverStopChecks();
         NetworkPlannerChecks();
         AutoDispatchChecks();

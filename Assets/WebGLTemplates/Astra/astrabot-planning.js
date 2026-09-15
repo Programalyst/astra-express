@@ -69,6 +69,7 @@
         requireValid(deposit && !buildings.has(location) && deposit.buildable !== false, "Extractor must target a revealed unused deposit.");
         requireValid(Number.isInteger(deposit.cost) && deposit.cost >= 0, "Known extractor cost required.");
         credit -= deposit.cost;
+        count++; idle++;
         buildings.set(location, {kind:"Extractor", resource:deposit.resource ?? "Ore", size:deposit.size ?? 1, origin:{x:action.x, y:action.y}, port:{x:action.x, y:action.y - 1}, connected:false, railConnected:false, served:false});
       }
       if (["build_solar", "build_plant"].includes(kind)) {
@@ -97,7 +98,9 @@
         } else {
           requireValid(building.kind === "Extractor", "Action needs an extractor.");
           if (kind === "dispatch_train") {
-            requireValid(!building.served && idle >= 1, "Dispatch needs an unserved mine and idle locomotive.");
+            const owned = trains.find(train => point(train.owner) === point(building.origin));
+            const available = state.extractorOwnedTrains ? owned?.phase === "Parked" : idle >= 1;
+            requireValid(!building.served && available, "Dispatch needs an unserved mine and its own parked train.");
             requireValid(building.connected && building.railConnected, "Connect mine power and depot rails before dispatch.");
             if (building.resource === "Fluxite") {
               const plant = buildings.get(destination);
@@ -106,10 +109,6 @@
             idle--; building.served = true;
           }
         }
-      }
-      if (kind === "buy_train") {
-        requireValid(count < Math.min(4, state.maxTrains ?? 4), "Fleet limit reached.");
-        count++; idle++; credit -= state.trainCost ?? 150;
       }
       requireValid(Number.isFinite(credit) && credit >= 0, "Plan exceeds current credits; wait for income and replan.");
     }

@@ -56,6 +56,7 @@ namespace AstraExpress
     public sealed class FreightTrain
     {
         public TrainPhase Phase;
+        public Structure Owner;
         public Structure Source;
         public Structure Destination;
         public ResourceKind Resource;
@@ -78,8 +79,6 @@ namespace AstraExpress
         public const float BatteryCapacity = 100;
         public const float Reserve = 10;
         public const int PlantCost = 250;
-        public const int TrainCost = 150;
-        public const int MaxTrains = 4;
         public const float PlantOutput = 8;
         public const float FuelEnergy = 40;
         public static readonly Cell[] Directions = { new Cell(1, 0), new Cell(-1, 0), new Cell(0, 1), new Cell(0, -1) };
@@ -90,7 +89,8 @@ namespace AstraExpress
         public readonly HashSet<Cell> Conduits = new HashSet<Cell>();
         public readonly HashSet<Cell> Rails = new HashSet<Cell>();
         public readonly HashSet<Cell> PoweredCells = new HashSet<Cell>();
-        public readonly FreightTrain Train = new FreightTrain();
+        public FreightTrain Train => Trains.FirstOrDefault();
+        public FreightTrain TrainFor(Structure extractor) => Trains.FirstOrDefault(train => train.Owner == extractor);
         public readonly List<FreightTrain> Trains = new List<FreightTrain>();
         public readonly Structure Colony;
         public int Credits { get; private set; } = 500;
@@ -131,9 +131,6 @@ namespace AstraExpress
             Deposits.Add(new Deposit { Origin = new Cell(22, 16), Size = 2 });
             Conduits.Add(Colony.Port);
             Rails.Add(Colony.Port);
-            Train.X = Colony.Port.X;
-            Train.Y = Colony.Port.Y;
-            Trains.Add(Train);
             Reveal(5.5f, 7.5f, 5);
             Reveal(RoverX, RoverY, 3);
             Reconnect();
@@ -261,12 +258,13 @@ namespace AstraExpress
             {
                 structure.Deposit = DepositAt(origin);
                 structure.Deposit.Extractor = structure;
+                Trains.Add(new FreightTrain { Owner = structure, Resource = structure.Deposit.Resource, X = Colony.Port.X, Y = Colony.Port.Y });
             }
             Structures.Add(structure);
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; an idle train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built. Connect power and rails; an idle train dispatches automatically when its route is complete.";
+            Message = kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; each connected extractor's train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built with its own free train. Connect power and rails; its train dispatches when the route is complete.";
             if (kind == StructureKind.Extractor || kind == StructureKind.PowerPlant) AutoDispatchReadyServices();
             return true;
         }
@@ -424,7 +422,6 @@ namespace AstraExpress
         private void AutoDispatchReadyServices()
         {
             int started = 0;
-            bool waitingForTrain = false;
             bool waitingForPlant = false;
             string previousMessage = Message;
             foreach (var extractor in Structures)
@@ -437,21 +434,20 @@ namespace AstraExpress
                     .ThenBy(plant => Math.Abs(plant.Port.X - extractor.Port.X) + Math.Abs(plant.Port.Y - extractor.Port.Y))
                     .FirstOrDefault();
                 if (destination == null) { waitingForPlant = true; continue; }
-                if (!Trains.Any(train => train.Phase == TrainPhase.Parked)) { waitingForTrain = true; continue; }
+                if (TrainFor(extractor)?.Phase != TrainPhase.Parked) continue;
                 if (Dispatch(extractor, destination)) started++;
             }
             Message = previousMessage;
             if (started > 0) Message += $" {started} train service(s) dispatched automatically.";
-            if (waitingForTrain) Message += " No idle train for another ready route. Buy a train in Fleet for automatic assignment.";
             if (waitingForPlant) Message += " Fluxite awaits a rail-connected power plant.";
         }
 
         public bool Dispatch(Structure extractor, Structure destination = null)
         {
-            if (extractor == null || extractor.Kind != StructureKind.Extractor) return Fail("Select an extractor first.");
+            if (extractor == null || extractor.Kind != StructureKind.Extractor || !Structures.Contains(extractor)) return Fail("Select an extractor first.");
             if (Trains.Any(train => train.Source == extractor)) return Fail("This extractor already has a train service.");
-            var available = Trains.FirstOrDefault(train => train.Phase == TrainPhase.Parked);
-            if (available == null) return Fail("No idle train. Buy a locomotive in Fleet, or park an existing service.");
+            var available = TrainFor(extractor);
+            if (available == null || available.Phase != TrainPhase.Parked) return Fail("This extractor's train must finish returning before restarting.");
             if (extractor.Deposit.Resource == ResourceKind.Ore) destination = Colony;
             else if (destination == null || destination.Kind != StructureKind.PowerPlant || !Structures.Contains(destination)) return Fail("Choose a power plant as this Fluxite extractor's destination.");
             var route = RailRoute(extractor);
@@ -470,21 +466,10 @@ namespace AstraExpress
             return true;
         }
 
-        public bool BuyTrain()
-        {
-            if (Trains.Count >= MaxTrains) return Fail("Fleet is full: four locomotives maximum.");
-            if (Credits < TrainCost) return Fail($"Need {TrainCost} credits for another locomotive.");
-            Credits -= TrainCost;
-            Trains.Add(new FreightTrain { X = Colony.Port.X, Y = Colony.Port.Y });
-            Revision++;
-            Message = "Locomotive purchased. Ready routes are assigned automatically.";
-            AutoDispatchReadyServices();
-            return true;
-        }
-
         public void ParkTrain(FreightTrain train = null)
         {
             train = train ?? Train;
+            if (train == null || !Trains.Contains(train)) return;
             if (train.Phase == TrainPhase.Parked) return;
             if (train.Source != null) manuallyStoppedServices.Add(train.Source);
             train.ParkRequested = true;
@@ -495,6 +480,7 @@ namespace AstraExpress
         public bool UpgradeTrain(FreightTrain train = null)
         {
             train = train ?? Train;
+            if (train == null || !Trains.Contains(train)) return Fail("Select an extractor with a train first.");
             if (train.CapacityLevel >= 3) return Fail("Train capacity is fully upgraded.");
             int cost = train.CapacityLevel * 100;
             if (Credits < cost) return Fail($"Need {cost} credits for this upgrade.");

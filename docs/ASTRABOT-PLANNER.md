@@ -56,20 +56,22 @@ Every action has the same fields; unused fields are null. The output schema uses
 | `dispatch_train` | `x,y`: extractor. `targetX/Y`: explicit plant origin for Fluxite, null for ore. |
 | `pause_mine`, `resume_mine` | `x,y`: existing extractor. |
 | `auto_explore` | No target or duration. Survey reachable revealed frontiers for at most 55 seconds, stopping on new Ore. |
-| `buy_train`, `resume`, `stop` | No target. |
+| `resume`, `stop` | No target. |
 | `wait` | No target; integer `seconds` from 1–20. |
+
+Separate train purchase (`buy_train`) is no longer supported. Successful extractor construction includes a free permanently owned train, with no four-train cap. Capacity upgrades and manual park/restart controls live in the extractor panel. The `trains` state includes `owner` even while parked; dispatch validation cannot use another extractor’s idle train.
 
 Both exploration actions and stop end their batch. Newly discovered resources require a fresh frame before planning their extraction. Unsupported actions such as reset, refund, building sale, extra colony depots and arbitrary code are rejected.
 
 ## Validation and progress
 
-The server validates coordinates, exact action fields, duplicate IDs, current revealed extractor targets, known sites, known building/deposit overlap, known route failures/costs, available locomotives, the four-train cap, Fluxite destinations and current credits. Earlier proposed building/link/train actions are considered when checking a later action in the same batch. Future income is never counted as current budget. Route costs for newly proposed buildings and the full terrain/occupancy simulation are checked again by the game adapter immediately before execution; this backend is not a second copy of the simulation.
+The server validates coordinates, exact action fields, duplicate IDs, current revealed extractor targets, known sites, known building/deposit overlap, known route failures/costs, extractor-owned parked locomotives, Fluxite destinations and current credits. Earlier proposed building/link/train actions are considered when checking a later action in the same batch. Future income is never counted as current budget. Route costs for newly proposed buildings and the full terrain/occupancy simulation are checked again by the game adapter immediately before execution; this backend is not a second copy of the simulation.
 
 A goal also retains the Ore origins visible when it began (including existing ore extractors). `serverProgress.initialVisibleOreOrigins` and `newVisibleOreOrigins` distinguish earlier discoveries from newly revealed Ore; Fluxite never counts as Ore. A completed survey batch may have found no Ore, so its action acknowledgment alone does not prove the discovery goal completed.
 
 A goal retains the last four **proposed** batches in RAM, keyed by game session and goal, capped at four goals and ten minutes. Current progress/results and a new screenshot are submitted to the local endpoint on every replan. An `agents-api` plan forwards the current planning context to OpenAI; a `game-state` continuation makes no OpenAI API request. Hosted planner sessions are separate from advisory coaching sessions and use the same eight-turn/ten-minute/two-minute-idle retirement rules and ID-only cleanup registry. No goal, image, or progress is written to local disk by the backend. Hosted session retention and asynchronous physical deletion remain as documented in `AGENTS-INTEGRATION.md`.
 
-The model is instructed to complete the first paying ore route before optional expansion, preserve current service income, use idle locomotives before asking to park, and distinguish one colony depot with up to four mining services from unsupported additional depots. Repeated failures should change the plan or expose a blocker. The browser bounds the actual execution/replan loop and honors stop independently of model output.
+The model is instructed to complete the first paying ore route before optional expansion, preserve current service income, use each extractor’s own free train without buying or reassigning locomotives, and distinguish one colony depot with one service per extractor from unsupported additional depots. Repeated failures should change the plan or expose a blocker. The browser bounds the actual execution/replan loop and honors stop independently of model output.
 
 Extractor-expansion goals keep an immutable starting count so “two additional extractors” cannot be satisfied by mines that already existed. A vague request for “more” means one additional Ore extractor; an explicit additional or total count takes precedence. Completion requires the requested count in fresh state, every target extractor joined to power, and connected solar generation at least equal to the stable rated demand when the goal asks for solar or power. A temporarily idle mine still contributes its rated demand.
 

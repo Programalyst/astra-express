@@ -6,26 +6,15 @@
   const isFuel = b => b.resource === "Fluxite";
   const resourceName = b => isFuel(b) ? "Fluxite" : "ore";
   function fleetState(s) {
-    const trains = s.trains?.length ? s.trains : [{index:0,phase:s.trainPhase || "Parked",resource:"Ore",parkRequested:!!s.trainParkRequested,capacity:s.capacity,capacityLevel:s.capacityLevel}];
-    const count = s.trainCount ?? trains.length, max = s.maxTrains ?? 4, cost = s.trainCost ?? 150;
-    return {trains, count, max, cost, idle:s.idleTrains ?? trains.filter(t => t.phase === "Parked").length,
-      canBuy:s.canBuyTrain ?? (count < max && s.credits >= cost)};
+    const trains = s.trains || [];
+    return {trains, idle:trains.filter(train => train.phase === "Parked").length};
   }
   function assignTip(s, b, fleet) {
-    const name = resourceName(b);
-    if (fleet.idle > 0) return tip(`dispatch-${b.origin.x}-${b.origin.y}`, isFuel(b) ? "Restart this fuel service" : "Restart this train service",
-      isFuel(b) ? "This ready Fluxite route has no service. Restart an idle locomotive to deliver fuel to its selected power plant." : "This ready route has no service. Restart an idle locomotive to carry ore to the colony.",
-      ["Press 1 for Explore and select this extractor.", ...(isFuel(b) ? ["Check the plant destination in its sidebar."] : []), "Click Dispatch idle train in the right sidebar."], b.origin);
-    const parking = fleet.trains.find(t => t.parkRequested);
-    if (parking) return tip("parking", "A locomotive is returning to the depot",
-      parking.resource === "Fluxite" ? "This train must finish its fuel delivery before parking. A full plant must consume fuel to make room." : "The train finishes its cargo delivery, then returns to the colony depot.",
-      ["Wait until a locomotive is parked and idle.", "Select this extractor and click Dispatch idle train to assign the idle locomotive."], s.colonyPort);
-    if (fleet.canBuy) return tip(`buy-train-${b.origin.x}-${b.origin.y}`, "Add a locomotive for this mine",
-      `Every locomotive is assigned. Another costs ${fleet.cost} credits; the fleet allows ${fleet.max}. Existing services can keep running.`,
-      ["Open Fleet on the bottom toolbar.", `Click Buy train / ${fleet.cost} cr.`, "The new locomotive automatically takes the first ready waiting route."], b.origin);
-    return tip(`switch-mine-${b.origin.x}-${b.origin.y}`, "Free a locomotive for this mine",
-      fleet.count >= fleet.max ? `All ${fleet.max} locomotives are assigned. Park a service before moving it to this mine; a capacity upgrade does not add a locomotive.` : `No locomotive is idle. Another costs ${fleet.cost} credits; keep ore deliveries earning or park an existing service.`,
-      ["Open Fleet and select the locomotive you want to reassign.", "Click Park at colony, then wait for it to finish delivering and return to the colony.", "Select this extractor and click Dispatch idle train; full mine storage does not prevent dispatch."], b.origin);
+    const owned = fleet.trains.find(train => same(train.owner || train.source, b.origin));
+    if (owned?.parkRequested) return tip("parking", "This mine’s train is returning", "It finishes its delivery before parking and remains owned by this extractor.", ["Wait for this train to park, then restart it from its extractor."], b.origin);
+    return tip(`dispatch-${b.origin.x}-${b.origin.y}`, "Restart this extractor’s train",
+      "This extractor includes its own free train. Restart its parked service; other mines keep their trains.",
+      ["Press 1 and select this extractor.", "Click Restart train in its sidebar."], b.origin);
   }
   const buildingName = b => b?.kind === "Solar" ? "solar array" : b?.kind === "PowerPlant" ? "power plant" : "extractor";
   function smartPlacementTip(s) {
@@ -126,7 +115,7 @@
       if (source) { ordered.splice(ordered.indexOf(source), 1); ordered.unshift(source); }
       if (!source && oreMines.length > 0 && selectedPlant.stock === 0 && !(selectedPlant.burnEnergy > 0)) {
         const deposit = (s.deposits || []).find(d => isFuel(d) && d.buildable && s.credits >= d.cost);
-        if (deposit) return [tip(`fuel-extractor-${deposit.origin.x}-${deposit.origin.y}`, "Mine fuel for this plant", `This revealed Fluxite patch needs a ${deposit.cost}-credit extractor. Fluxite fuels the plant; it is never sold.`, ["Press 2 for Extractor.", `Build on the Fluxite patch at ${coord(deposit.origin)}.`, "Connect power, depot rails and this plant's rails. An idle locomotive starts automatically once the route is ready."], deposit.origin)];
+        if (deposit) return [tip(`fuel-extractor-${deposit.origin.x}-${deposit.origin.y}`, "Mine fuel for this plant", `This revealed Fluxite patch needs a ${deposit.cost}-credit extractor. Fluxite fuels the plant; it is never sold.`, ["Press 2 for Extractor.", `Build on the Fluxite patch at ${coord(deposit.origin)}.`, "Connect power, depot rails and this plant's rails. Its own free locomotive starts automatically once the route is ready."], deposit.origin)];
         return [tip("find-fuel", "This plant needs Fluxite", "A power plant cannot generate on its own. A Fluxite extractor and a train service must supply its fuel.", ["Use the rover to reveal a green Fluxite patch.", "Keep ore services earning while you fund a fuel extractor and its rail connections."], s.frontier)];
       }
     }
@@ -139,16 +128,16 @@
         const plant = plants.find(p => same(p.origin, destination));
         if (!plant) {
           if (plants.length) return [tip(`choose-plant-${b.origin.x}-${b.origin.y}`, "Choose a fuel destination", "Fluxite must go to a power plant. Delivering it never earns credits.",
-            ["Press 1 and select this Fluxite extractor.", "Use the plant destination button in its sidebar to choose a power plant.", "Connect rails to that plant; an idle locomotive starts automatically when the route is ready."], b.origin)];
+            ["Press 1 and select this Fluxite extractor.", "Use the plant destination button in its sidebar to choose a power plant.", "Connect rails to that plant; its own free locomotive starts automatically when the route is ready."], b.origin)];
           if (s.plantSite && s.credits >= (s.plantCost ?? 250)) return [tip("build-plant", "Give Fluxite a destination", `A 2 × 2 power plant costs ${s.plantCost ?? 250} credits. Connect its power and rails, then deliver Fluxite; fuel is never sold.`,
-            ["Press 6 or choose Plant on the toolbar.", `Place it on the clear footprint at ${coord(s.plantSite)}.`, "Wire its south port and link its rails. A ready route takes an idle locomotive automatically."], s.plantSite)];
+            ["Press 6 or choose Plant on the toolbar.", `Place it on the clear footprint at ${coord(s.plantSite)}.`, "Wire its south port and link its rails. A ready route starts its extractor’s train automatically."], s.plantSite)];
           return [tip("plant-needed", "Fluxite needs a power plant", `A plant costs ${s.plantCost ?? 250} credits and needs a clear explored 2 × 2 footprint. Keep an ore service earning credits; Fluxite is fuel, not income.`,
-            ["Explore space for a plant and keep its south port clear.", "Use ore deliveries to fund the plant, rails and an available locomotive."], s.frontier)];
+            ["Explore space for a plant and keep its south port clear.", "Use ore deliveries to fund the plant, rails; the extractor includes its train."], s.frontier)];
         }
         if (!plant.connected) return [routeTip(s, plant, false)];
         if (!plant.railConnected || !b.destinationRailConnected) return [routeTip(s, {...plant, railRoute:b.destinationRailRoute || plant.railRoute}, true)];
       }
-      if (!b.served && (!b.paused || b.stock > 0) && (fleet.idle > 0 || b === selected || !selected)) return [assignTip(s, b, fleet)];
+      if (!b.served && (!b.paused || b.stock > 0)) return [assignTip(s, b, fleet)];
     }
     if (oreMines.length === 0) {
       const deposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && s.credits >= d.cost);
@@ -172,17 +161,17 @@
         ["Select the destination power plant and check that it is connected and unpaused.", "Let mining use battery energy; the plant burns fuel only when the battery needs charging.", "The train unloads the remaining Fluxite as storage space becomes available."], plant?.origin || waiting.destination)];
     }
     const parking = fleet.trains.find(t => t.parkRequested);
-    if (parking) return [tip("parking", "A locomotive is returning to the depot", parking.resource === "Fluxite" ? "Fuel goes to its plant before the train returns to the colony. A full plant can delay unloading." : "The train finishes its ore delivery, then parks at the colony.", ["Wait for the locomotive to park.", "Select an unassigned, rail-connected extractor and Dispatch the idle locomotive."], s.colonyPort)];
+    if (parking) return [tip("parking", "A locomotive is returning to the depot", parking.resource === "Fluxite" ? "Fuel goes to its plant before the train returns to the colony. A full plant can delay unloading." : "The train finishes its ore delivery, then parks at the colony.", ["Wait for the locomotive to park.", "Select its owning extractor and click Restart train when ready."], s.colonyPort)];
     const earningTrain = fleet.trains.find(t => t.resource !== "Fluxite" && t.phase !== "Parked");
     if (s.deliveries === 0 && earningTrain) return [tip("first-delivery", "Your railway is working", `The ore train is ${{ToMine:"travelling to the mine",Loading:"loading ore",ToColony:"returning to the colony",Unloading:"unloading ore",ReturningToDepot:"returning to the depot"}[earningTrain.phase] || "running"}. It earns credits when cargo unloads at the colony.`, ["Let the train complete its trip; the service repeats automatically.", "Watch ore delivered and credits in the top bar."], s.colonyPort)];
     const options = [];
     if (s.generation <= s.demand && s.solarSite && s.credits >= 100) options.push(tip("expand-power", "Make room for more power", "Another connected solar array adds 2 power/s and gives your mines room to grow.", ["Press 3 for Solar and use this clear 2 × 2 footprint.", "Spend 100 credits to place it, then wire its south port with Conduit."], s.solarSite));
     const upgrade = fleet.trains.find(t => t.index === s.selectedTrainIndex && t.capacityLevel < 3) || fleet.trains.find(t => t.capacityLevel < 3 && t.resource !== "Fluxite");
-    if (upgrade && s.credits >= upgrade.capacityLevel * 100) options.push({...tip("upgrade-train", "Carry more on each trip", `Locomotive ${upgrade.index + 1} holds ${upgrade.capacity} cargo. Another 4 slots cost ${upgrade.capacityLevel * 100} credits; this upgrades that train only.`, ["Open Fleet on the bottom toolbar.", `Select locomotive ${upgrade.index + 1}, then choose Capacity +4 / ${upgrade.capacityLevel * 100} cr.`]), trainIndex:upgrade.index});
+    if (upgrade && s.credits >= upgrade.capacityLevel * 100) options.push({...tip("upgrade-train", "Carry more on each trip", `Locomotive ${upgrade.index + 1} holds ${upgrade.capacity} cargo. Another 4 slots cost ${upgrade.capacityLevel * 100} credits; this upgrades that train only.`, ["Select the extractor that owns this train.", `Choose Train capacity / ${upgrade.capacityLevel * 100} cr.`], upgrade.owner || upgrade.source), trainIndex:upgrade.index});
     const nextDeposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && s.credits >= d.cost) || (s.deposits || []).find(d => d.buildable && s.credits >= d.cost);
     if (nextDeposit) options.unshift(tip(`expand-mine-${nextDeposit.origin.x}-${nextDeposit.origin.y}`, isFuel(nextDeposit) ? "You found Fluxite fuel" : "You found another ore patch",
-      isFuel(nextDeposit) ? `An extractor costs ${nextDeposit.cost} credits. Fluxite must be hauled to a connected power plant; it generates power and is never sold.` : `An extractor here costs ${nextDeposit.cost} credits. It needs power, rails and an idle locomotive. Buy another in Fleet when needed, up to ${fleet.max} total.`,
-      ["Press 2 for Extractor.", `Click the revealed ${resourceName(nextDeposit)} patch at ${coord(nextDeposit.origin)}.`, isFuel(nextDeposit) ? "Connect power, rails to the colony depot and a plant, then assign an idle locomotive to that plant." : "Connect power first, then rails; keep the current freight services earning while you build."], nextDeposit.origin));
+      isFuel(nextDeposit) ? `An extractor costs ${nextDeposit.cost} credits. Fluxite must be hauled to a connected power plant; it generates power and is never sold.` : `An extractor here costs ${nextDeposit.cost} credits. It includes a free train and needs connected power and rails.`,
+      ["Press 2 for Extractor.", `Click the revealed ${resourceName(nextDeposit)} patch at ${coord(nextDeposit.origin)}.`, isFuel(nextDeposit) ? "Connect power, rails to the colony depot and a plant, then let its owned train supply that plant." : "Connect power first, then rails; keep the current freight services earning while you build."], nextDeposit.origin));
     options.push(tip("expand-frontier", s.deliveries > 0 ? "Your first route is paying off" : "Keep the colony moving",
       s.deliveries > 0 ? `${s.sold} ore delivered over ${s.deliveries} trips. The train keeps running while you explore.` : "Your colony is set up. Explore more ground to find the next opportunity.",
       ["Press 1 and send the rover to the edge of the fog.", "Larger deposits need more credits, space, power, and their own rail connection."], s.frontier));
@@ -213,20 +202,18 @@
     else if (s.routeStarted) { primaryStep = t.primaryStep || t.steps[0]; }
     else if (t.link) chooseTool(t.link.tool, t.link.tool === "Rail" ? 5 : 4, t.primaryStep);
     else if (/^dispatch-/.test(t.id)) {
-      autoCue = true; selectBuilding("primary-action", "Click Dispatch idle train.");
+      autoCue = true; selectBuilding("primary-action", "Click Restart train.");
       body = isFuel((s.buildings || []).find(b => same(b.origin, t.target)) || {})
-        ? "An idle train delivers Fluxite to the selected power plant. Fuel is never sold."
-        : "An idle train can collect this mine’s ore. Deliveries earn 8 credits per ore.";
+        ? "This extractor’s train delivers Fluxite to the selected power plant. Fuel is never sold."
+        : "This extractor’s train collects its ore. Deliveries earn 8 credits per ore.";
     }
     else if (/^power-low-/.test(t.id)) { autoCue = true; selectBuilding("mine-pause", "Click Pause mine."); body = "Demand exceeds generation. Pause this mine; keep the game running to recharge."; }
     else if (/^resume-mine-/.test(t.id)) { autoCue = true; selectBuilding("mine-pause", "Click Resume mine."); body = "Battery power is available; this mine is paused."; }
     else if (t.id === "resume-plant") { autoCue = true; selectBuilding("plant-pause", "Click Resume plant."); body = "The plant can burn stored Fluxite when the battery needs power."; }
     else if (/^choose-plant-/.test(t.id)) { autoCue = true; selectBuilding("fuel-destination", "Choose a power plant."); body = "Fluxite must go to a power plant; it is never sold."; }
-    else if (/^buy-train-/.test(t.id)) { autoCue = true; control(s.trainSelected ? "buy-train" : "fleet", s.trainSelected ? `Click Buy train / ${s.trainCost ?? 150} cr.` : "Open Fleet."); body = `All trains are assigned. Another costs ${s.trainCost ?? 150} credits; existing services keep running.`; }
-    else if (/^switch-mine-/.test(t.id)) { autoCue = true; control(s.trainSelected ? "train-park" : "fleet", s.trainSelected ? "Click Park at colony." : "Open Fleet."); body = "No train is idle. Park the selected service before reassigning it; carried cargo is delivered first."; }
     else if (t.id === "upgrade-train") {
-      autoCue = true; const id = !s.trainSelected ? "fleet" : (s.selectedTrainIndex ?? 0) === t.trainIndex ? "train-capacity" : "train-next";
-      control(id, id === "fleet" ? "Open Fleet." : id === "train-next" ? "Choose the next locomotive." : "Click Capacity +4.");
+      autoCue = true;
+      selectBuilding("train-capacity", "Click Train capacity.");
       const train = fleetState(s).trains.find(v => v.index === t.trainIndex);
       body = `Four more cargo slots cost ${(train?.capacityLevel ?? 1) * 100} credits. This upgrades one train.`;
     }
@@ -287,7 +274,7 @@
     const disconnected = ordered.find(b => !b.paused && b.connected === false && b.powerRoute?.possible && b.powerRoute.cost <= s.credits);
     if (disconnected) return make(`power-${disconnected.origin.x}-${disconnected.origin.y}`, "This building needs power. Want me to connect it?", "Connect power", "Connect the selected building to the colony power grid. Verify the connection. Do not add other buildings or rails.", disconnected.origin);
     const mine = ordered.find(b => b.kind === "Extractor" && !isFuel(b) && !b.paused && b.connected && b.railConnected === false && b.railRoute?.possible && b.railRoute.cost <= s.credits);
-    if (mine) return make(`rails-${mine.origin.x}-${mine.origin.y}`, "I can help build the rails for this mine.", "Build the rails", "Connect this Ore extractor to the colony by rail. Use an idle train if available. Do not buy trains or reassign active or manually parked services.", mine.origin);
+    if (mine) return make(`rails-${mine.origin.x}-${mine.origin.y}`, "I can help build the rails for this mine.", "Build the rails", "Connect this Ore extractor to the colony by rail. Its owned train starts automatically. Do not restart manually parked services.", mine.origin);
     const deposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && d.cost <= s.credits);
     if (deposit) return make(`mine-${deposit.origin.x}-${deposit.origin.y}`, "We found ore. Shall I plan a working mine?", "Build an ore mine", "Build an Ore extractor on this revealed deposit, connect power and rails to the colony within available credits. Do not buy a locomotive.", deposit.origin);
     if (s.frontier && !s.roverMoving && s.battery > 15) return make("discover-ore", "Want to find more ore? I can send the rover.", "Find more ore", "Send the rover on automatic exploration to uncover fog and discover a new Ore deposit. Stop safely once a new Ore deposit is revealed.");

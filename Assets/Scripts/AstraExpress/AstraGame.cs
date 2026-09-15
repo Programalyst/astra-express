@@ -85,9 +85,9 @@ namespace AstraExpress
         private float UiWidth => Screen.width / UiScale;
         private float UiHeight => Screen.height / UiScale;
         private bool SidebarVisible => !Simulation.Paused && !pickingTile && !BuildingTool && (trainSelected || selected != null);
-        private bool ConnectionSelection => SidebarVisible && !trainSelected && selected != null && (NetworkTool || !selected.Connected);
+        private bool ConnectionSelection => SidebarVisible && !trainSelected && selected != null && (NetworkTool || (!selected.Connected && selected.Kind != StructureKind.Extractor));
         private Rect Sidebar => SidebarVisible ? new Rect(UiWidth - 294, 88, 278,
-            ConnectionSelection && NetworkTool ? 174 : ConnectionSelection || (!trainSelected && selected != null && (selected.Kind == StructureKind.Solar || selected.Kind == StructureKind.Colony)) ? 210 : 380) : Rect.zero;
+            ConnectionSelection && NetworkTool ? 174 : ConnectionSelection || (!trainSelected && selected != null && (selected.Kind == StructureKind.Solar || selected.Kind == StructureKind.Colony)) ? 210 : selected?.Kind == StructureKind.Extractor ? 422 : 380) : Rect.zero;
         private Rect ConnectionActionRect => new Rect(Sidebar.x + 18, 252, Sidebar.width - 36, 34);
         private bool ObjectiveVisible => !Simulation.Paused && !pickingTile && !trainSelected && selected == null && !BuildingTool && !NetworkTool && !ConnectionPanelVisible;
         private Rect ObjectivePanel => ObjectiveVisible ? new Rect(16, 88, 350, 114) : Rect.zero;
@@ -683,7 +683,7 @@ namespace AstraExpress
                 "Click ground east of the colony. Your rover reveals ore hidden by the fog.",
                 "Choose Extractor, then click the revealed ore patch. Keep its south port clear.",
                 "Choose Conduit. Click the colony's cyan port, then the extractor's south port.",
-                "Lay rails between those same ports. An idle train dispatches automatically when the route is complete.",
+                "Lay rails between those same ports. Its free train dispatches automatically when the route is complete.",
                 "The train collects local ore and sells it at the colony. Only deliveries earn credits.",
                 "Keep ore deliveries running. Explore for green Fluxite to fuel a power plant.",
                 "Select a Fluxite patch to start a fuel supply line for a power plant.",
@@ -718,35 +718,15 @@ namespace AstraExpress
                     CoachGuideLink($"{(!selected.Connected ? "Conduit" : "Rail")},{selected.Origin.X},{selected.Origin.Y}");
                 return;
             }
-            if (trainSelected)
-            {
-                if (Button(new Rect(left, row, 48, 27), "<")) selectedTrainIndex = (selectedTrainIndex + Simulation.Trains.Count - 1) % Simulation.Trains.Count;
-                GUI.Label(new Rect(left + 59, row + 3, 124, 23), $"{selectedTrainIndex + 1} / {Simulation.Trains.Count} trains", bodyStyle);
-                if (Button(new Rect(left + width - 48, row, 48, 27), ">")) selectedTrainIndex = (selectedTrainIndex + 1) % Simulation.Trains.Count;
-                row += 38;
-                var train = Simulation.Trains[selectedTrainIndex];
-                Stat(left, ref row, "SERVICE", TrainStatus(train));
-                Stat(left, ref row, "CARGO", $"{train.Cargo} / {train.Capacity} {train.Resource}");
-                Stat(left, ref row, "DESTINATION", train.Destination == null ? "Not assigned" : train.Destination == Simulation.Colony ? "Colony / ore buyer" : "Plant " + train.Destination.Origin);
-                bool parked = train.Phase == TrainPhase.Parked;
-                bool parking = train.ParkRequested && !parked;
-                if (Button(new Rect(left, row + 5, width, 32), parked ? "Parked at colony" : parking ? "Parking at colony..." : "Park at colony", enabled: !parked && !parking)) Simulation.ParkTrain(train);
-                int cost = train.CapacityLevel * 100;
-                bool maximum = train.CapacityLevel >= 3;
-                if (Button(new Rect(left, row + 44, width, 32), maximum ? "Capacity fully upgraded" : $"Capacity +4 / {cost} cr", enabled: !maximum && Simulation.Credits >= cost)) Simulation.UpgradeTrain(train);
-                bool fleetFull = Simulation.Trains.Count >= ColonySimulation.MaxTrains;
-                if (Button(new Rect(left, row + 83, width, 32), fleetFull ? "Fleet full / 4 trains" : $"Buy train / {ColonySimulation.TrainCost} cr", enabled: !fleetFull && Simulation.Credits >= ColonySimulation.TrainCost))
-                    if (Simulation.BuyTrain()) selectedTrainIndex = Simulation.Trains.Count - 1;
-                GUI.Label(new Rect(left, row + 120, width, 18), train.Resource == ResourceKind.Fluxite ? "Fuel powers plants; ore earns 8 cr each." : "Ore earns 8 cr each. Upgrades add 4 slots.", interfaceSmall);
-            }
-            else if (selected != null && selected.Kind == StructureKind.Extractor)
+            if (selected != null && selected.Kind == StructureKind.Extractor)
             {
                 string status = Simulation.Paused ? "Colony paused" : selected.Paused ? "Mine paused" : !selected.Connected ? "Needs power" : selected.Stock >= selected.Storage ? "Storage full" : selected.SuppliedFraction < 0.99f ? "Low power" : "Mining";
                 Stat(left, ref row, "STATUS", status);
                 Stat(left, ref row, "STORAGE", $"{selected.Stock} / {selected.Storage} {selected.Deposit.Resource}");
                 Stat(left, ref row, "OUTPUT", $"{selected.Rate:0.##}/s / {selected.Demand:0.#} power/s");
-                var assigned = Simulation.Trains.FirstOrDefault(train => train.Source == selected);
-                bool idle = Simulation.Trains.Any(train => train.Phase == TrainPhase.Parked);
+                var ownedTrain = Simulation.TrainFor(selected);
+                var assigned = ownedTrain?.Source == selected ? ownedTrain : null;
+                bool idle = ownedTrain?.Phase == TrainPhase.Parked;
                 bool fuel = selected.Deposit.Resource == ResourceKind.Fluxite;
                 var plants = Simulation.Structures.Where(structure => structure.Kind == StructureKind.PowerPlant).ToList();
                 if (fuel && (fuelDestination == null || !plants.Contains(fuelDestination))) fuelDestination = plants.FirstOrDefault();
@@ -754,7 +734,7 @@ namespace AstraExpress
                 bool sourceRail = Simulation.RailRoute(selected) != null;
                 bool destinationRail = destination != null && Simulation.RailRoute(destination) != null;
                 bool destinationPower = destination != null && destination.Connected;
-                bool parking = assigned != null ? assigned.ParkRequested : !idle && Simulation.Trains.Any(train => train.ParkRequested);
+                bool parking = ownedTrain != null && ownedTrain.ParkRequested;
                 Readiness(new Rect(left, row + 3, width, 40), selected.Connected && destinationPower, sourceRail && destinationRail, assigned != null || !idle, assigned != null, parking);
                 if (fuel)
                 {
@@ -764,8 +744,8 @@ namespace AstraExpress
                 else GUI.Label(new Rect(left, row + 51, width, 20), "Destination: colony / 8 credits per ore", interfaceSmall);
                 string action = Simulation.Paused ? "Resume colony" : !selected.Connected ? "Show power connection" : !sourceRail ? "Show rail connection" :
                     destination == null ? "Build power plant [6]" : !destinationPower ? "Connect plant power" : !destinationRail ? "Connect plant rails" :
-                    assigned != null ? "View assigned train" : idle ? "Dispatch idle train" : "Open fleet: buy or park";
-                if (Button(new Rect(left, row + 80, width, 36), action, active: true))
+                    assigned != null ? parking ? "Returning to colony..." : "Park train at colony" : "Restart train";
+                if (Button(new Rect(left, row + 80, width, 36), action, active: true, enabled: !parking))
                 {
                     if (Simulation.Paused) Simulation.Paused = false;
                     else if (!selected.Connected) CoachGuideLink($"Conduit,{selected.Origin.X},{selected.Origin.Y}");
@@ -773,16 +753,21 @@ namespace AstraExpress
                     else if (destination == null) SetTool(Tool.PowerPlant);
                     else if (!destinationPower) CoachGuideLink($"Conduit,{destination.Origin.X},{destination.Origin.Y}");
                     else if (!destinationRail) CoachGuideLink($"Rail,{destination.Origin.X},{destination.Origin.Y}");
-                    else if (assigned != null) { selectedTrainIndex = Simulation.Trains.IndexOf(assigned); trainSelected = true; }
-                    else if (idle) { if (Simulation.Dispatch(selected, destination)) SetTool(Tool.Explore); }
-                    else { trainSelected = true; SetToolForFleet(); }
+                    else if (assigned != null) Simulation.ParkTrain(ownedTrain);
+                    else if (idle) Simulation.Dispatch(selected, destination);
                 }
                 int upgradeCost = selected.Level * 120;
                 bool maximum = selected.Level >= 3;
-                string hint = !maximum && Simulation.Credits < upgradeCost ? $"Upgrade needs {upgradeCost - Simulation.Credits} more credits." : assigned != null ? TrainStatus(assigned) : idle ? "An idle locomotive is ready for assignment." : "Buy another locomotive, or park a service.";
+                string hint = !maximum && Simulation.Credits < upgradeCost ? $"Upgrade needs {upgradeCost - Simulation.Credits} more credits." : ownedTrain != null ? $"{TrainStatus(ownedTrain)} · {ownedTrain.Cargo}/{ownedTrain.Capacity} cargo" : "Train unavailable.";
                 GUI.Label(new Rect(left, row + 118, width, 18), hint, interfaceSmall);
                 if (Button(new Rect(left, row + 140, 112, 34), selected.Paused ? "Resume mine" : "Pause mine")) selected.Paused = !selected.Paused;
                 if (Button(new Rect(left + 122, row + 140, width - 122, 34), maximum ? "Max level" : $"Upgrade\n{upgradeCost} cr", enabled: !maximum && Simulation.Credits >= upgradeCost)) Simulation.UpgradeExtractor(selected);
+                if (ownedTrain != null)
+                {
+                    int trainCost = ownedTrain.CapacityLevel * 100;
+                    bool trainMaximum = ownedTrain.CapacityLevel >= 3;
+                    if (Button(new Rect(left, row + 181, width, 34), trainMaximum ? $"Train capacity {ownedTrain.Capacity} / maximum" : $"Train capacity {ownedTrain.Capacity} to {ownedTrain.Capacity + 4} / {trainCost} cr", enabled: !trainMaximum && Simulation.Credits >= trainCost)) Simulation.UpgradeTrain(ownedTrain);
+                }
             }
             else if (selected != null && selected.Kind == StructureKind.PowerPlant)
             {
@@ -809,8 +794,6 @@ namespace AstraExpress
             }
         }
 
-        private void SetToolForFleet() { tool = Tool.Explore; routeStart = null; HideLinkGuide(); StopFollowingRover(); }
-
         private void Stat(float left, ref float row, string name, string value)
         {
             GUI.Label(new Rect(left, row, 90, 23), name, smallStyle);
@@ -827,8 +810,7 @@ namespace AstraExpress
             string[] icons = { "rover", "extractor", "solar", "conduit", "rail", "solar" };
             for (int index = 0; index < names.Length; index++)
                 if (ToolbarCard(new Rect(28 + index * 147, bottom + 13, 139, 44), names[index], subtitles[index], icons[index], (index + 1).ToString(), tool == (Tool)index && !trainSelected, index == 4 || index == 1 ? gold : cyan)) SetTool((Tool)index);
-            if (ToolbarCard(new Rect(910, bottom + 13, 139, 44), "Fleet", "Trains / upgrades", "train", null, trainSelected, gold)) { trainSelected = true; selected = null; SetToolForFleet(); }
-            GUI.Label(new Rect(1065, bottom + 12, UiWidth - 1089, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
+            GUI.Label(new Rect(920, bottom + 12, UiWidth - 944, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
             Fill(new Rect(16, bottom - 38, UiWidth - 32, 30), new Color(0.045f, 0.07f, 0.12f, 0.9f));
             string message = Simulation.Message;
             if (tool == Tool.Conduit || tool == Tool.Rail)

@@ -14,7 +14,7 @@
     <div id="bot-thinking" role="status" hidden><span class="bot-thinking-face" aria-hidden="true">•ᴗ•</span><span>Thinking <span class="astra-dots" aria-hidden="true"><i></i><i></i><i></i></span></span></div><p id="bot-status" role="status">I’ll show you the plan before starting. Stop or Escape returns control.</p><p id="bot-progress" aria-label="Expansion progress" hidden></p>
     <details id="bot-activity"><summary id="bot-activity-toggle">Live activity · expand</summary><p class="bot-activity-note">Action explanations and game updates</p><ol id="bot-timeline" aria-label="AstraBot activity history"></ol></details>
     <footer><button id="bot-start" hidden>Start plan</button><button id="bot-stop" hidden>Stop</button><button id="bot-expand" hidden>Open task</button><button id="bot-edit" hidden>Edit goal</button></footer>
-    <small class="bot-scope">Game controls only · 1 rover · 1 depot · up to 4 trains</small>`;
+    <small class="bot-scope">Game controls only · 1 rover · 1 depot · 1 free train per extractor</small>`;
   document.body.append(panel);
   document.getElementById("bot-activity").open = false;
   document.getElementById("bot-activity").addEventListener("toggle", () => {
@@ -439,7 +439,7 @@
       if (!state || state.session !== session || Date.now() - stateAt > 4000) return reject(new Error("Game state is stale. Reconnect before continuing."));
       const id = `bot-${Date.now()}-${++sequence}`;
       actionPending = {id,resolve,reject,timer:setTimeout(() => { actionPending = null; send("CoachBotStop", "timeout"); reject(new Error("Action timed out; control returned to you.")); }, 75000)};
-      send("CoachBotCommand", JSON.stringify({...action,id,session,x:action.x ?? -1,y:action.y ?? -1,targetX:action.targetX ?? -1,targetY:action.targetY ?? -1,seconds:action.seconds ?? 5}));
+      send("CoachBotCommand", JSON.stringify({...action,id,session,x:action.x ?? -1,y:action.y ?? -1,targetX:action.targetX ?? -1,targetY:action.targetY ?? -1,trainIndex:action.trainIndex ?? -1,seconds:action.seconds ?? 5}));
     });
   }
   el("bot-start").onclick = async () => {

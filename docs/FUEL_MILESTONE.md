@@ -2,6 +2,12 @@
 
 13 September 2026 · extension of the first playable ore checkpoint
 
+## Extractor-owned trains — 15 September 2026
+
+Every successful extractor build now includes its own free train at the colony depot, including Fluxite sites. No starter locomotive, train purchase, reassignment, or four-train cap remains. Select an extractor for capacity upgrades (4 → 8 → 12, costing 100 then 200 credits), cargo/status, and park/restart controls. Rails still auto-start ready services; manual parking preserves ownership and completes carried deliveries before stopping. Historical fleet notes below describe the superseded system.
+
+Validation: 168 JavaScript tests and 82 Python tests pass, plus 908 simulation scenarios, 46,920 conservation invariants, 25 exploration assertions and 42 bot-control checks. Simulation coverage includes five uniquely owned trains, no extra charge for trains, duplicate-build rejection, owner-preserving parking, and independent capacity upgrades. The rebuilt Chrome game at 1336×768 was checked for the removed Fleet tab, a 150-credit extractor purchase, its 100-credit capacity upgrade, automatic rail dispatch, paid deliveries, and park/restart. The final label-only rebuild was checked again with an unpowered extractor to confirm its capacity control remains available. No Sites deployment was made for this update.
+
 ## Current visual update — 14 September 2026
 
 Power plants use `Assets/Synty/PolygonSciFiWorlds/Prefabs/Props/SM_Prop_PowerGenerator_01.prefab`, preserving its existing URP materials and glass. The generator is centered on the unchanged 2x2 foundation and uniformly fitted within a 3.6-unit width and 2.6-unit height. The older generated reactor/exchanger props are removed. Placement, south port, fuel storage, consumption, and power generation are unchanged. The imported visual prefab omits legacy convex colliders that require a missing source-project editor plugin; simulation occupancy remains authoritative. Historical implementation and verification notes below describe the earlier art.

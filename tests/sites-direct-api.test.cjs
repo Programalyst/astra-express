@@ -144,11 +144,11 @@ test('expanded grid corner is accepted by the browser planner',() => {
   const result=validate([action('explore',{x:31,y:31})]);
   assert.equal(result.actions[0].x,31); assert.equal(result.actions[0].y,31);
 });
-test('hidden ore, overspending, fleet limits, and unconnected dispatch are rejected',() => {
+test('hidden ore, removed train purchases, and unconnected dispatch are rejected',() => {
   assert.throws(() => validate([action('build_extractor',{x:2,y:3})]),/revealed/);
   const data=frame(); data.state.credits=149;
-  assert.throws(() => validate([action('buy_train')],data),/credits/);
-  data.state.trainCount=4; assert.throws(() => validate([action('buy_train')],data),/Fleet/);
+  assert.throws(() => validate([action('buy_train')],data),/invalid/);
+  data.state.trainCount=4; assert.throws(() => validate([action('buy_train')],data),/invalid/);
   data.state.buildings=[{kind:'Extractor',origin:{x:2,y:3},port:{x:2,y:2},connected:false,railConnected:true}];
   assert.throws(() => validate([action('dispatch_train',{x:2,y:3})],data),/Connect mine/);
 });
@@ -187,3 +187,14 @@ test('conversation returns the browser NDJSON protocol without executing a deleg
   assert.equal(JSON.parse(client.calls.at(-1).options.body).input[0].content.length,1);
 });
 
+test('owned train dispatch cannot take another mine’s idle locomotive, and fifth train selection is valid',() => {
+  const data=frame();
+  data.state={...data.state,extractorOwnedTrains:true,trainCount:5,idleTrains:5,
+    buildings:[{kind:'Extractor',origin:{x:2,y:3},connected:true,railConnected:true}],
+    trains:[{owner:{x:8,y:8},phase:'Parked'}]};
+  assert.throws(()=>validate([action('dispatch_train',{x:2,y:3})],data),/own parked train/);
+  data.state.trains.push({owner:{x:2,y:3},phase:'Parked'});
+  assert.equal(validate([action('dispatch_train',{x:2,y:3})],data).actions.length,1);
+  assert.equal(validate([action('select',{trainIndex:4})],data).actions.length,1);
+  assert.throws(()=>validate([action('select',{trainIndex:5})],data));
+});

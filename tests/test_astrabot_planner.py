@@ -254,7 +254,7 @@ class PlanValidationTests(unittest.TestCase):
         data = request_data(); data['goal'] = 'Power another Ore extractor with solar'
         data['state'].update(buildings=[mine(rail_connected=False, railRoute={'possible': True, 'cost': 18})], deposits=[])
         power_only = prepared_expansion(data)
-        for forbidden in [action('connect_rail', 11, 7), action('buy_train')]:
+        for forbidden in [action('connect_rail', 11, 7), action('dispatch_train', 11, 7)]:
             with self.subTest(action=forbidden['type']), self.assertRaisesRegex(ValueError, 'Transport was not requested'):
                 planner.validate_actions([forbidden], power_only)
 
@@ -333,9 +333,9 @@ class PlanValidationTests(unittest.TestCase):
         for actions in [[action('wait', seconds=1, id=str(i)) for i in range(7)], [action('resume'), action('resume')]]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan(actions)), request_data())
 
-    def test_buying_obeys_fleet_and_current_budget_without_future_income(self):
+    def test_separate_train_purchases_are_unsupported(self):
         data = request_data()
-        planner.parse_plan(json.dumps(plan([action('buy_train')])), data)
+        with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('buy_train')])), data)
         for change in [{'trainCount': 4}, {'credits': 149}]:
             with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('buy_train')])), {**data, 'state': {**data['state'], **change}})
         with self.assertRaises(ValueError):
@@ -349,7 +349,10 @@ class PlanValidationTests(unittest.TestCase):
                 planner.parse_plan(json.dumps(plan([action('dispatch_train', 11, 7)])), {**data, 'state': {**data['state'], 'buildings': [{**mine(), **change}]}})
         data['state']['idleTrains'] = 0
         with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('dispatch_train', 11, 7)])), data)
-        planner.parse_plan(json.dumps(plan([action('buy_train'), action('dispatch_train', 11, 7)])), data)
+        data['state'].update(extractorOwnedTrains=True, trains=[{'owner': {'x': 11, 'y': 7}, 'phase': 'Parked'}])
+        planner.parse_plan(json.dumps(plan([action('dispatch_train', 11, 7)])), data)
+        data['state']['trains'] = [{'owner': {'x': 8, 'y': 13}, 'phase': 'Parked'}]
+        with self.assertRaises(ValueError): planner.parse_plan(json.dumps(plan([action('dispatch_train', 11, 7)])), data)
 
     def test_fluxite_dispatch_has_explicit_power_plant_destination_not_colony(self):
         data = request_data(); data['state']['buildings'] = [mine('Fluxite'), {'kind': 'PowerPlant', 'origin': {'x': 3, 'y': 11}, 'connected': True, 'railConnected': True}]

@@ -76,9 +76,7 @@ namespace AstraExpress
                 if (!destination.Connected) return "RAIL LINKED · Connect the selected plant's power port next.";
                 if (Simulation.RailRoute(destination) == null) return "RAIL LINKED · Connect the selected plant to the same rail network.";
             }
-            return Simulation.Trains.Any(train => train.Phase == TrainPhase.Parked)
-                ? "RAIL LINKED · A manually stopped service can be restarted from the extractor panel."
-                : "RAIL LINKED · Buy a locomotive in Fleet; it will dispatch to a ready route automatically.";
+            return "RAIL LINKED · This extractor owns a free train. Restart a manually stopped service from its panel.";
         }
 
         private void UpdateLinkGuide()

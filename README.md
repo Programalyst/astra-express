@@ -155,7 +155,7 @@ The repository may be ahead of the public build; [deployment records](docs/DEPLO
 - **32 × 32 frontier:** fog of war, two terrain elevations, traversable slopes, and grid-based rover pathfinding.
 - **Explore to expand:** infinite deposits with higher-yield, larger patches farther from the colony.
 - **Shared power economy:** solar generation charges a colony battery used by rover movement and working extractors.
-- **Rail logistics:** deliver ore to earn credits; expand and upgrade mining and train services.
+- **Rail logistics:** every extractor includes a free dedicated train, with no four-train cap. Connect rails to start deliveries; click its extractor for capacity upgrades and service controls.
 - **Fluxite fuel chain:** transport fictional space fuel to power plants for stronger generation.
 - **A readable miniature world:** windswept red terrain, a moving APC rover, crystal deposits, animated drills, and a research-pod colony.
 

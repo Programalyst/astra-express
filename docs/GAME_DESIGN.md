@@ -4,7 +4,7 @@ Version 0.6 · 13 September 2026 · Hackathon implementation
 
 The original 90-minute implementation commitment is recorded in [Pre-event milestone](PRE_EVENT_MILESTONE.md). The hackathon implementation continues beyond that historical checkpoint.
 
-The first ore-delivery checkpoint is implemented and validated in the Editor and local Chrome Web build. Fluxite power plants and a four-locomotive fleet now extend that loop. See [Playable handoff](PLAYABLE_HANDOFF.md) for evidence and [Fuel milestone](FUEL_MILESTONE.md) for current controls and balance. This full design still includes unimplemented proposals.
+The first ore-delivery checkpoint is implemented and validated in the Editor and local Chrome Web build. Fluxite power plants and one free train per extractor now extend that loop. See [Playable handoff](PLAYABLE_HANDOFF.md) for evidence and [Fuel milestone](FUEL_MILESTONE.md) for current controls and balance. This full design still includes unimplemented proposals.
 
 ## Game concept
 
@@ -151,19 +151,19 @@ Deposits never run out. The first small mine can keep funding expansion while th
 
 Lay orthogonal track on explored terrain, with a clear total price before confirmation. Prototype short drags or start-and-end previews, then choose the more usable input method. Reusing existing track is free. Invalid or unaffordable placement charges nothing.
 
-An idle train dispatches automatically when a continuous rail path reaches an extractor from the colony depot and reaches its delivery destination. Ore goes to the colony. Fluxite automatically chooses a rail-connected plant, preferring powered plants, then the closest by grid distance; equal choices use construction order. Building an extractor/plant over an existing connection, completing rails or conduits, and buying a locomotive recheck ready routes. Busy trains are never reassigned, no locomotive is bought automatically, and a manually parked service stays stopped until explicitly dispatched again. If all trains are busy, the connection message directs the player to Fleet; buying one assigns it to the first ready unserved extractor. The manual dispatch controls remain available. The first departure comes from the colony depot. The free starter locomotive can be supplemented with three more, costing 150 credits each, so ore income and fuel supply operate simultaneously. Multi-stop schedules remain deferred.
+Each extractor includes one free train, spawned at the colony depot when construction succeeds. It permanently belongs to that extractor; there is no separate starter train, purchase, reassignment, or four-train limit. Completing its rail route automatically starts its train without interrupting other services. Ore goes to the colony. Fluxite chooses a rail-connected power plant, preferring powered plants, then the closest by grid distance, with construction order breaking ties. New extractor/plant construction and rail/conduit changes recheck ready routes. Manually parked services stay stopped until restarted from the owning extractor's panel. Multi-stop schedules remain deferred.
 
-Train capacity caps each load. Show ore visually and numerically, with Waiting for ore, Loading, Delivering, and Returning states. After a short loading dwell, a train can depart with a partial load; with no cargo it waits instead of running empty services.
+Click an extractor to view its train status and cargo, park/restart its service, and buy capacity upgrades for that train. The Fleet toolbar tab is removed. Train capacity caps each load. Show ore visually and numerically, with Waiting for ore, Loading, Delivering, and Returning states. After a short loading dwell, a train can depart with a partial load; with no cargo it waits instead of running empty services.
 
 The colony accepts and sells ore immediately. Remove unloaded cargo and award its payment once. Extraction, loading, empty travel, reconnecting a service, and repeated UI events do not award credits.
 
 Trains may share track and pass each other initially. Signals, collisions, reservations between competing trains, and congestion simulation are deferred. Capacity upgrades apply at the next loading stop and preserve cargo already aboard.
 
-Cancellation takes effect after any current cargo delivery and a physical return to the colony. A full plant causes its fuel train to wait with remaining cargo aboard, including when parking is requested; resume the plant and provide electricity demand so it makes room. Reassignment is available only after parking. One service per extractor and four trains total are the current limits. Track removal and selling trains are not implemented.
+Cancellation takes effect after any current cargo delivery and a physical return to the colony. A full plant causes its fuel train to wait with remaining cargo aboard, including when parking is requested; resume the plant and provide electricity demand so it makes room. Parking never releases ownership. Each extractor has exactly one train, regardless of how many other extractors exist. Track removal and selling trains are not implemented.
 
 ## Economy and starting balance
 
-Start with a colony, rover, one solar installation, credits, and a free small train. The starter panel is confirmed; the remaining equipment and all amounts below are proposed to make the first route accessible.
+Start with a colony, rover, one solar installation, and credits. Building each extractor includes a free small train. The starter panel is confirmed; the remaining equipment and all amounts below are proposed to make the first route accessible.
 
 | Parameter | Proposed initial value |
 | --- | --- |
@@ -182,7 +182,7 @@ Start with a colony, rover, one solar installation, credits, and a free small tr
 | Conduit and track costs | 2 and 3 credits per new tile |
 | Train capacity and speed | 4 ore and 2 tiles per second |
 | Loading and unloading dwell | 1 second each |
-| Additional train cost | 150 credits |
+| Train acquisition | One free train included per extractor; no separate purchase |
 | Ore sale value | 8 credits per delivered unit |
 | Train capacity upgrades | 4 to 8 for 100 credits; 8 to 12 for 200 |
 | Extractor output upgrades | Proposed multipliers of 1x, 2x, and 3x the patch's base output |
@@ -193,7 +193,7 @@ These are tuning inputs, not measured balance.
 
 A starter 1 by 1 extractor plus eight new rail tiles and eight conduit tiles costs 190 credits, leaving 310. At eight credits per ore, 24 delivered ore covers that investment. The authored first route must actually fit this budget.
 
-A six-tile one-way service takes about eight seconds per round trip including both dwells. At four ore per full load it could carry 30 ore per minute, matching the starter extractor's theoretical output. Longer routes, larger deposits, and upgraded extraction create a reason to increase capacity. Actual throughput depends on loading, path length, available power, and inventory. Tune larger-site output together with train upgrades and fleet size so at least one affordable service arrangement can transport it; do not assign large multipliers without checking the resulting throughput.
+A six-tile one-way service takes about eight seconds per round trip including both dwells. At four ore per full load it could carry 30 ore per minute, matching the starter extractor's theoretical output. Longer routes, larger deposits, and upgraded extraction create a reason to increase capacity. Actual throughput depends on loading, path length, available power, and inventory. Tune larger-site output together with its owned train’s capacity upgrades so at least one affordable service arrangement can transport it; do not assign large multipliers without checking the resulting throughput.
 
 One panel and one starter extractor leave one power per second for battery recovery while the rover rests. Moving at full speed consumes four power per second. Another panel adds two generation per second; an extractor upgrade adds demand. Investment decisions therefore affect both exploration speed and income.
 

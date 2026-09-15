@@ -2,10 +2,12 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {advise,signature,suggestTask,suggestTasks} = require('../Assets/WebGLTemplates/Astra/coach-policy.js');
 const point = (x,y) => ({x,y,screenX:.5,screenY:.5,visible:true});
-function state(extra={}) { return {session:'run-1',credits:500,battery:100,generation:2,demand:0,paused:false,
+function state(extra={}) { const current = {session:'run-1',credits:500,battery:100,generation:2,demand:0,paused:false,
   tool:'Explore',message:'',selected:null,routeStarted:false,placementReason:'',
   rover:point(7,6),frontier:point(10,6),roverMoving:false,buildings:[],deposits:[],
-  colonyPort:point(5,6),trainPhase:'Parked',capacity:4,capacityLevel:1,cargo:0,sold:0,deliveries:0,...extra}; }
+  colonyPort:point(5,6),trainPhase:'Parked',capacity:4,capacityLevel:1,cargo:0,sold:0,deliveries:0,...extra};
+  if (!current.trains) current.trains = current.buildings.filter(building => building.kind === 'Extractor').map((building,index) => ({index, owner:building.origin, source:building.served ? building.origin : null, phase:building.served ? current.trainPhase : 'Parked', capacity:current.capacity, capacityLevel:current.capacityLevel, resource:building.resource || 'Ore', parkRequested:false}));
+  return current; }
 function mine(extra={}) {return {kind:'Extractor',origin:point(11,7),port:point(11,6),connected:false,paused:false,
   railConnected:false,stock:0,storage:24,level:1,demand:1,rate:.5,
   powerRoute:{possible:true,cost:12,stops:[point(5,6),point(11,6)]},
@@ -26,7 +28,7 @@ test('proactive offers follow discovery, power and rail needs with exact known t
   const power=suggestTask(state({buildings:[mine()]}));
   assert.equal(power.id,'power-11-7'); assert.deepEqual(power.target,point(11,7));
   const rail=suggestTask(state({buildings:[mine({connected:true})]}));
-  assert.equal(rail.id,'rails-11-7'); assert.match(rail.goal,/Do not buy trains/);
+  assert.equal(rail.id,'rails-11-7'); assert.match(rail.goal,/Do not restart manually parked/);
 });
 test('proactive offers suppress paused and active work, unsafe exploration and unaffordable links',()=>{
   for(const extra of [{paused:true},{botBusy:true},{pickingTile:true},{routeStarted:true},{roverMoving:true},{battery:10}]) assert.equal(suggestTask(state(extra)),null);
@@ -74,7 +76,7 @@ test('upgrade suggestions obey affordability and max level',()=>{
   const s=state({buildings:[mine({connected:true,railConnected:true,served:true})],trainPhase:'Loading',deliveries:2,credits:99});
   assert.equal(advise(s).some(t=>t.id==='upgrade-train'),false);
   assert.equal(advise({...s,credits:100}).some(t=>t.id==='upgrade-train'),true);
-  assert.equal(advise({...s,credits:1000,capacityLevel:3}).some(t=>t.id==='upgrade-train'),false);
+  assert.equal(advise({...s,credits:1000,trains:s.trains.map(train=>({...train,capacityLevel:3}))}).some(t=>t.id==='upgrade-train'),false);
 });
 test('context signatures reject restart, purchases, tool changes and new construction',()=>{
   const s=state(),key=signature(s,advise(s));
@@ -119,15 +121,13 @@ test('blocked plans expose no guided build action',()=>{
   assert.equal(t.link,undefined);
   assert.doesNotMatch(t.body,/translucent/);
 });
-test('a selected second mine offers buying without stopping the current service',()=>{
-  const second=mine({origin:point(8,13),port:point(8,12),connected:true,railConnected:true,served:false});
+test('a second mine restarts only its owned train without interrupting another service',()=>{
+  const second=mine({origin:point(8,13),connected:true,railConnected:true,served:false});
   const first=mine({connected:true,railConnected:true,served:true});
-  const s=state({selected:second.origin,buildings:[first,second],trainPhase:'ToMine',deliveries:2});
-  const tip=advise(s)[0];
-  assert.equal(tip.id,'buy-train-8-13'); assert.match(tip.primaryStep,/Open Fleet/); assert.match(tip.body,/150 credits/); assert.doesNotMatch(tip.steps.join(' '),/Park/);
-  assert.equal(advise({...s,trainParkRequested:true})[0].id,'parking');
-  assert.equal(advise({...s,trainPhase:'Parked',trainParkRequested:false})[0].id,'dispatch-8-13');
-  assert.notEqual(advise({...s,selected:first.origin})[0].id,'switch-mine-8-13');
+  const s=state({selected:second.origin,buildings:[first,second],deliveries:2});
+  assert.equal(advise(s)[0].id,'dispatch-8-13');
+  assert.doesNotMatch(JSON.stringify(advise(s)),/Fleet|Buy train|reassign/);
+  assert.equal(advise({...s,trains:s.trains.map(train=>({...train,parkRequested:train.index===1}))})[0].id,'parking');
 });
 test('a revealed second deposit teaches construction before later fleet setup',()=>{
   const tips=advise(state({trainPhase:'Loading',deliveries:2,buildings:[mine({connected:true,railConnected:true,served:true})],deposits:[{origin:point(8,13),size:1,cost:150,buildable:true}]}));
@@ -145,12 +145,13 @@ const fuelMine=(extra={})=>mine({resource:'Fluxite',origin:point(13,3),port:poin
 test('an idle second locomotive dispatches even while selected locomotive is busy',()=>{
   const b=mine({connected:true,railConnected:true,served:false,stock:24});
   const t=advise(state({uiAnchors:cueAnchors,selected:b.origin,trainPhase:'ToMine',trains:[loco(0),loco(1,{phase:'Parked',source:null,destination:null})],buildings:[b]}))[0];
-  assert.equal(t.id,'dispatch-11-7');assert.match(t.steps.join(' '),/Dispatch idle train/);assert.doesNotMatch(t.body+t.steps.join(' '),/park.*before|Buy train/);
+  assert.equal(t.id,'dispatch-11-7');assert.match(t.steps.join(' '),/Restart train/);assert.doesNotMatch(t.body+t.steps.join(' '),/park.*before|Buy train/);
 });
-test('full fleet explains selecting a service to park rather than buying fifth train',()=>{
+test('five extractor-owned services never recommend buying or stealing a locomotive',()=>{
   const b=mine({connected:true,railConnected:true,served:false});
-  const s=state({selected:b.origin,buildings:[b],trains:[0,1,2,3].map(i=>loco(i)),trainCount:4,maxTrains:4,canBuyTrain:false});
-  const t=advise(s)[0];assert.equal(t.id,'switch-mine-11-7');assert.match(t.primaryStep,/Open Fleet/);assert.match(t.body,/Park the selected service/);assert.doesNotMatch(t.steps.join(' '),/Buy train/);
+  const s=state({selected:b.origin,buildings:[b],trains:[0,1,2,3,4].map(index=>loco(index)),trainCount:5});
+  assert.equal(advise(s)[0].id,'dispatch-11-7');
+  assert.doesNotMatch(JSON.stringify(advise(s)),/Fleet|Buy train|reassign|Park the selected/);
 });
 test('dispatch and first delivery for Fluxite never claim fuel income',()=>{
   const b=fuelMine();const p=plant();
@@ -220,7 +221,7 @@ test('dispatch cues require selecting the intended mine before pointing at its s
   assert.equal(advise(s)[0].uiTarget,'tool-explore');
   assert.equal(advise({...s,tool:'Explore',selected:point(3,11)})[0].uiTarget,null);
   const ready=advise({...s,tool:'Explore',selected:b.origin})[0];
-  assert.equal(ready.uiTarget,'primary-action');assert.match(ready.cueLabel,/Dispatch idle train/);
+  assert.equal(ready.uiTarget,'primary-action');assert.match(ready.cueLabel,/Restart train/);
   assert.doesNotMatch(ready.steps.join(' '),/Press 1/);
 });
 test('connection cues advance from tool to port to destination without repeating completed steps',()=>{
@@ -231,23 +232,22 @@ test('connection cues advance from tool to port to destination without repeating
   const destination=advise({...s,tool:'Conduit',routeStarted:true,routeStart:point(5,6)})[0];
   assert.deepEqual(destination.target,point(11,6));assert.match(destination.primaryStep,/Click.*extractor port/);assert.equal(destination.steps.length,1);
 });
-test('Fleet cues advance to Buy train and never point at absent controls',()=>{
+test('restart cues point at the extractor action only when visible',()=>{
   const b=mine({connected:true,railConnected:true});
-  const s=state({uiAnchors:cueAnchors,buildings:[b],selected:b.origin,trainPhase:'ToMine'});
-  assert.equal(advise(s)[0].uiTarget,'fleet');
-  assert.equal(advise({...s,trainSelected:true})[0].uiTarget,'buy-train');
-  assert.equal(advise({...s,trainSelected:true,uiAnchors:[]})[0].uiTarget,null);
+  const s=state({uiAnchors:cueAnchors,buildings:[b],selected:b.origin});
+  assert.equal(advise(s)[0].uiTarget,'primary-action');
+  assert.equal(advise({...s,uiAnchors:[]})[0].uiTarget,null);
 });
 test('paused colony has an actionable Resume cue without a world target',()=>{
   const t=advise(state({paused:true,uiAnchors:cueAnchors}))[0];
   assert.equal(t.uiTarget,'pause');assert.equal(t.target,null);
 });
-test('capacity cues select the intended train before highlighting an upgrade',()=>{
-  const s=state({uiAnchors:cueAnchors,deliveries:2,trainSelected:true,selectedTrainIndex:0,
-    buildings:[mine({connected:true,railConnected:true,served:true})],
-    trains:[loco(0,{capacityLevel:3}),loco(1,{capacityLevel:1})]});
-  assert.equal(advise(s).find(t=>t.id==='upgrade-train').uiTarget,'train-next');
-  assert.equal(advise({...s,selectedTrainIndex:1}).find(t=>t.id==='upgrade-train').uiTarget,'train-capacity');
+test('capacity cues select the owning extractor before highlighting its upgrade',()=>{
+  const b=mine({connected:true,railConnected:true,served:true});
+  const s=state({uiAnchors:cueAnchors,deliveries:2,buildings:[b],trains:[loco(0,{owner:b.origin})]});
+  const tip=advise(s).find(t=>t.id==='upgrade-train');
+  assert.deepEqual(tip.target,b.origin); assert.equal(tip.uiTarget,null);
+  assert.equal(advise({...s,selected:b.origin}).find(t=>t.id==='upgrade-train').uiTarget,'train-capacity');
 });
 
 const smartState = extra => state({smartRouting:true,uiAnchors:cueAnchors,...extra});
@@ -403,7 +403,7 @@ test('compact network sidebar hands a selected linked mine from Explore to visib
     assert.equal(leaveTool.id,'dispatch-11-7');assert.equal(leaveTool.uiTarget,'tool-explore');
     assert.equal(leaveTool.primaryStep,'Choose Explore.');assert.equal(leaveTool.target,null);assert.equal(leaveTool.autoCue,true);
     const dispatch=advise({...s,tool:'Explore',uiAnchors:cueAnchors})[0];
-    assert.equal(dispatch.uiTarget,'primary-action');assert.equal(dispatch.primaryStep,'Click Dispatch idle train.');
+    assert.equal(dispatch.uiTarget,'primary-action');assert.equal(dispatch.primaryStep,'Click Restart train.');
     assert.equal(dispatch.autoCue,true);assert.equal(dispatch.steps.length,1);
     // A later snapshot without the button selects the mine instead of cueing
     // an absent control or clicking while a network tool remains active.
