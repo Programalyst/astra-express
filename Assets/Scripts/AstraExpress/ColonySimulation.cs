@@ -46,6 +46,23 @@ namespace AstraExpress
         public float SuppliedFraction;
         public float BurnEnergy;
         public float Generation;
+        private float generationSampleEnergy;
+        private float generationSampleDuration;
+        private float averageGeneration;
+        public float AverageGeneration => Connected && !Paused && !Disabled ? averageGeneration : 0;
+        internal void SampleGeneration(float delta)
+        {
+            if (!Connected || Paused || Disabled)
+            {
+                generationSampleEnergy = generationSampleDuration = averageGeneration = 0;
+                return;
+            }
+            generationSampleEnergy += Generation * delta;
+            generationSampleDuration += delta;
+            if (generationSampleDuration < 1) return;
+            averageGeneration = generationSampleEnergy / generationSampleDuration;
+            generationSampleEnergy = generationSampleDuration = 0;
+        }
         public float Health = 100;
         public const float MaxHealth = 100;
         public bool Disabled => Health <= 0;
@@ -103,6 +120,7 @@ namespace AstraExpress
         public float Generation { get; private set; }
         public float SolarGeneration { get; private set; }
         public float FuelGeneration => Structures.Sum(structure => structure.Generation);
+        public float AverageFuelGeneration => Structures.Where(structure => structure.Kind == StructureKind.PowerPlant).Sum(structure => structure.AverageGeneration);
         public float Demand { get; private set; }
         public float RoverX { get; private set; } = 7;
         public float RoverY { get; private set; } = 6;
@@ -133,8 +151,8 @@ namespace AstraExpress
             Structures.Add(starterSolar);
             Deposits.Add(new Deposit { Origin = new Cell(10, 4), Size = 1 });
             Deposits.Add(new Deposit { Origin = new Cell(23, 13), Size = 1 });
-            Deposits.Add(new Deposit { Origin = new Cell(13, 8), Size = 1, Resource = ResourceKind.Fluxite });
-            Deposits.Add(new Deposit { Origin = new Cell(25, 25), Size = 2, Resource = ResourceKind.Fluxite });
+            Deposits.Add(new Deposit { Origin = new Cell(13, 13), Size = 1, Resource = ResourceKind.Fluxite });
+            Deposits.Add(new Deposit { Origin = new Cell(25, 25), Size = 2, Resource = ResourceKind.Ore });
             Deposits.Add(new Deposit { Origin = new Cell(4, 23), Size = 2, Resource = ResourceKind.Ore });
             foreach (var cell in Corridor(starterSolar.Port, Colony.Port)) Conduits.Add(cell);
             Rails.Add(Colony.Port);
@@ -548,6 +566,8 @@ namespace AstraExpress
                 plant.Generation = generated / delta;
                 Battery += generated;
             }
+            foreach (var plant in Structures)
+                if (plant.Kind == StructureKind.PowerPlant) plant.SampleGeneration(delta);
             Generation = SolarGeneration + FuelGeneration;
         }
 

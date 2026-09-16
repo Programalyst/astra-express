@@ -4,7 +4,7 @@ Implemented gameplay, included in Sites version 13 on 15 September 2026. See [de
 
 ## Trigger and approach
 
-- The first produced unit from either 2x2 Ore or Fluxite extractor permanently awakens raids for that game. Exploration, placement, unpowered mines, paused mines, and 1x1 production do not trigger them.
+- The first produced unit from either 2x2 Ore extractor permanently awakens raids for that game. Exploration, placement, unpowered mines, paused mines, and 1x1 production do not trigger them.
 - A visible warning starts a 20-second countdown. Waves then arrive every 45 simulation seconds from the northwest/top-left cell `(0, 31)`.
 - Waves start with two aliens arriving 1.5 seconds apart, add one every two waves up to six, and never exceed 12 living aliens. Pausing mining does not reset the threat. Restart clears it.
 - Aliens select the nearest reachable operational building by four-neighbor walking distance. They use ramps, avoid hillsides and building footprints, and re-evaluate routes when construction changes. They can travel through unrevealed terrain without revealing it to the player or AstraBot.
@@ -35,7 +35,7 @@ Game Pause freezes aliens, firing, waves, and repairs with the rest of the simul
 
 Coaching receives building health/disablement/repair status, wave timing, and only revealed alien positions. It offers local defense/repair guidance. Turret construction and repairs are manual-only; the bounded planner cannot execute them. Existing approved conduit actions can power a selected turret.
 
-`tests/DefenseChecks.cs` exercises the real simulation: both resource triggers, countdown/pause, northwest spawns, bounded waves, nearest targets, terrain traversal, damage, disablement/repair, powered firing, fog/range/terrain restrictions, and cargo conservation. Legacy economy scenarios explicitly disable raids to isolate their original assertions; defense scenarios use the normal enabled simulation.
+`tests/DefenseChecks.cs` exercises the real simulation: both large-deposit triggers, countdown/pause, northwest spawns, bounded waves, nearest targets, terrain traversal, damage, disablement/repair, powered firing, fog/range/terrain restrictions, and cargo conservation. Legacy economy scenarios explicitly disable raids to isolate their original assertions; defense scenarios use the normal enabled simulation.
 
 Run the full validation set in `AGENTS.md`. Automated checks are not visual evidence; inspect the freshly rebuilt player separately for model references, readability, aiming, and beam visibility.
 

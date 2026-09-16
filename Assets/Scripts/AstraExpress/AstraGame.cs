@@ -652,7 +652,7 @@ namespace AstraExpress
             GUI.Label(new Rect(585, 10, 280, 26), $"SHARED BATTERY   {Simulation.Battery:0} / 100", bodyStyle);
             Fill(new Rect(585, 39, 175, 6), new Color(0.17f, 0.23f, 0.30f));
             Fill(new Rect(585, 39, 175 * Simulation.Battery / 100, 6), Simulation.Battery < 12 ? gold : cyan);
-            GUI.Label(new Rect(585, 49, 460, 20), $"SOLAR +{Simulation.SolarGeneration:0}/s   FUEL +{Simulation.FuelGeneration:0.#}/s   MINES -{Simulation.Demand:0.#}/s", smallStyle);
+            GUI.Label(new Rect(585, 49, 460, 20), $"SOLAR +{Simulation.SolarGeneration:0}/s   FUEL +{Simulation.AverageFuelGeneration:0.#}/s   MINES -{Simulation.Demand:0.#}/s", smallStyle);
             if (Button(new Rect(UiWidth - 214, 17, 92, 36), Simulation.Paused ? "Resume" : "Pause", Simulation.Paused)) Simulation.Paused = !Simulation.Paused;
             if (Button(new Rect(UiWidth - 112, 17, 92, 36), confirmRestart ? "Confirm?" : "Restart"))
             {
@@ -779,10 +779,10 @@ namespace AstraExpress
             }
             else if (selected != null && selected.Kind == StructureKind.PowerPlant)
             {
-                string state = selected.Disabled ? "Disabled - repair" : Simulation.Paused ? "Colony paused" : selected.Paused ? "Plant paused" : !selected.Connected ? "Needs power link" : selected.Stock == 0 && selected.BurnEnergy <= 0 ? "Needs fuel" : selected.Generation <= 0 ? "Battery satisfied" : "Generating";
+                string state = selected.Disabled ? "Disabled - repair" : Simulation.Paused ? "Colony paused" : selected.Paused ? "Plant paused" : !selected.Connected ? "Needs power link" : selected.Stock == 0 && selected.BurnEnergy <= 0 ? "Needs fuel" : selected.AverageGeneration <= 0 ? "Battery satisfied" : "Generating";
                 Stat(left, ref row, "STATUS", state);
                 Stat(left, ref row, "FUEL", $"{selected.Stock} / {selected.Storage} Fluxite");
-                Stat(left, ref row, "OUTPUT", $"{selected.Generation:0.#} / {ColonySimulation.PlantOutput} power/s");
+                Stat(left, ref row, "AVG OUTPUT", $"{selected.AverageGeneration:0.#} / {ColonySimulation.PlantOutput} power/s");
                 Stat(left, ref row, "BURN LEFT", $"{selected.BurnEnergy:0.#} power");
                 bool rail = Simulation.RailRoute(selected) != null;
                 if (!selected.Connected || !rail)

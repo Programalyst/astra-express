@@ -56,7 +56,7 @@ static class DefenseChecks
             Advance(simulation, 0.25f);
             Check(!simulation.RaidsStarted, "No trigger before actual production");
             Advance(simulation, 1);
-            Check(simulation.RaidsStarted && simulation.WaveNumber == 0 && simulation.NextWaveIn > 19, "Either resource awakens raids on first produced unit");
+            Check(simulation.RaidsStarted && simulation.WaveNumber == 0 && simulation.NextWaveIn > 19, "Either large ore patch awakens raids on first produced unit");
             mine.Paused = true;
             simulation.Paused = true;
             float countdown = simulation.NextWaveIn;

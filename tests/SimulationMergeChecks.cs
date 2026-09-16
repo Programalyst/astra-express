@@ -158,6 +158,37 @@ class Review
             ":B=" + string.Join(";", sim.Structures.Select(b => b.Origin + "=" + b.Connected));
     }
 
+    static void PowerReadoutChecks()
+    {
+        var plant = new Structure { Kind = StructureKind.PowerPlant, Connected = true, Generation = 8 };
+        plant.SampleGeneration(0.25f);
+        Check(plant.AverageGeneration == 0, "Readout waits for a full sampling window");
+        plant.Generation = 0;
+        plant.SampleGeneration(0.75f);
+        Check(plant.AverageGeneration == 2, "Readout averages generated energy over elapsed simulation time");
+        plant.Generation = 8;
+        plant.SampleGeneration(0.25f);
+        Check(plant.AverageGeneration == 2, "Readout stays fixed between sampling windows");
+        plant.Generation = 0;
+        plant.SampleGeneration(0.75f);
+        Check(plant.AverageGeneration == 2, "Intermittent generation displays its sustained rate");
+        plant.SampleGeneration(1);
+        Check(plant.AverageGeneration == 0, "Readout settles to zero when battery demand stops");
+        plant.Generation = 8;
+        plant.SampleGeneration(1);
+        plant.Paused = true;
+        Check(plant.AverageGeneration == 0, "Paused plant immediately reports zero");
+        plant.SampleGeneration(0.25f);
+        plant.Paused = false;
+        Check(plant.AverageGeneration == 0, "Resumed plant does not reuse a pre-pause sample");
+        plant.SampleGeneration(1);
+        plant.Connected = false;
+        Check(plant.AverageGeneration == 0, "Disconnected plant immediately reports zero");
+        plant.Connected = true;
+        plant.Health = 0;
+        Check(plant.AverageGeneration == 0, "Disabled plant immediately reports zero");
+    }
+
     static void NetworkPlannerChecks()
     {
         int before = scenarioChecks;
@@ -313,7 +344,7 @@ class Review
 
         var fuelSim = new ColonySimulation(enableRaids: false);
         fuelSim.Reveal(16, 16, 100);
-        var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 8));
+        var fuel = Build(fuelSim, StructureKind.Extractor, new Cell(13, 13));
         Link(fuelSim, fuel, true);
         Check(fuelSim.Train.Phase == TrainPhase.Parked, "Fluxite waits for a reachable plant rather than going to colony");
         var plant = Build(fuelSim, StructureKind.PowerPlant, new Cell(14, 5));
@@ -350,10 +381,12 @@ class Review
         Check(layout.DepositAt(new Cell(10, 4))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(10, 4))?.Size == 1, "Nearby ore is a 1x1 patch at (10, 4)");
         Check(layout.DepositAt(new Cell(12, 16)) == null, "Farther 1x1 ore leaves its previous lowland site clear");
         Check(layout.DepositAt(new Cell(23, 13))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(23, 13))?.Size == 1 && layout.Terrain.Elevation(new Cell(23, 13)) == 1, "Farther 1x1 ore occupies the center of the eastern plateau");
-        Check(layout.DepositAt(new Cell(13, 8))?.Resource == ResourceKind.Fluxite && layout.DepositAt(new Cell(13, 8))?.Size == 1, "Small Fluxite moves to the former nearby ore site");
-        Check(layout.Deposits.Count == 5 && layout.Deposits.Count(deposit => deposit.Resource == ResourceKind.Ore && deposit.Size == 2) == 1, "Only the resized distant 2x2 ore patch remains");
+        Check(layout.DepositAt(new Cell(13, 13))?.Resource == ResourceKind.Fluxite && layout.DepositAt(new Cell(13, 13))?.Size == 1, "Small Fluxite occupies (13, 13)");
+        Check(layout.Deposits.Count(deposit => deposit.Resource == ResourceKind.Fluxite) == 1, "Only the 1x1 Fluxite fuel source remains");
+        Check(layout.DepositAt(new Cell(13, 8)) == null, "Previous small Fluxite site is empty");
+        Check(layout.Deposits.Count == 5 && layout.Deposits.Count(deposit => deposit.Resource == ResourceKind.Ore && deposit.Size == 2) == 2, "Both large deposits are 2x2 ore patches");
         Check(layout.DepositAt(new Cell(20, 6)) == null, "Former eastern 2x2 ore patch is removed");
-        Check(layout.DepositAt(new Cell(25, 25))?.Size == 2 && layout.Deposits.All(deposit => deposit.Size < 3), "Eastern Fluxite deposit retains the 2x2 tier");
+        Check(layout.DepositAt(new Cell(25, 25))?.Size == 2 && layout.Deposits.All(deposit => deposit.Size < 3), "Eastern ore deposit retains the 2x2 tier");
         Check(ColonySimulation.Footprint(new Cell(22, 16), 2).All(cell => layout.DepositAt(cell) == null), "Moved Fluxite leaves its previous footprint clear");
         Check(layout.DepositAt(new Cell(24, 16)) == null && layout.DepositAt(new Cell(22, 18)) == null, "Eastern deposit leaves its former outer row and column clear");
         Check(layout.DepositAt(new Cell(15, 11)) == null && layout.DepositAt(new Cell(11, 7)) == null && layout.DepositAt(new Cell(8, 13)) == null && layout.DepositAt(new Cell(4, 17)) == null, "Former nearby resource sites are empty");
@@ -367,11 +400,11 @@ class Review
             Check(!layout.FullyRevealed(deposit), "Resource sites require exploration");
         }
         Check(layout.DepositAt(new Cell(4, 23))?.Resource == ResourceKind.Ore && layout.DepositAt(new Cell(4, 23))?.Size == 2 && layout.Terrain.Elevation(new Cell(4, 23)) == 1, "2x2 ore occupies the former northern Fluxite site");
-        Check(layout.DepositAt(new Cell(25, 25))?.Resource == ResourceKind.Fluxite && layout.Terrain.Elevation(new Cell(25, 25)) == 0, "2x2 Fluxite occupies (25, 25) on low ground north of the eastern plateau");
+        Check(layout.DepositAt(new Cell(25, 25))?.Resource == ResourceKind.Ore && layout.Terrain.Elevation(new Cell(25, 25)) == 0, "2x2 ore occupies (25, 25) on low ground north of the eastern plateau");
         var sim=new ColonySimulation(enableRaids: false); Check(sim.Trains.Count == 0 && sim.Train == null, "No unowned starter train"); Check(!sim.UpgradeTrain(), "No train upgrade before an extractor exists"); sim.Reveal(14,11,100);
         var ore=Build(sim,StructureKind.Extractor,new Cell(10,4)); Link(sim,ore,false);Link(sim,ore,true);Check(sim.Train.Source==ore,"Automatic ore dispatch");
         Advance(sim,600); Check(sim.Sold>0,"Ore earning");
-        var fuel=Build(sim,StructureKind.Extractor,new Cell(13,8));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
+        var fuel=Build(sim,StructureKind.Extractor,new Cell(13,13));var plant=Build(sim,StructureKind.PowerPlant,new Cell(14,5));Link(sim,fuel,false);Link(sim,fuel,true);Link(sim,plant,false);Link(sim,plant,true);
         var second = sim.TrainFor(fuel); Check(sim.UpgradeTrain(second), "Upgrade owned fuel train"); Check(second.Capacity == 8 && sim.Train.Capacity == 4, "Upgrade affects only owning mine");
         plant.Paused=true;Check(second.Source==fuel && second.Destination==plant,"Automatic fuel dispatch");int soldBefore=sim.Sold,creditsBefore=sim.Credits;Advance(sim,300);
         Check(sim.Sold>soldBefore,"Ore continues while fuel service runs");Check(sim.Credits-creditsBefore==(sim.Sold-soldBefore)*8,"Only ore credits awarded");Check(sim.FuelDelivered>0,"Fluxite delivery");Check(sim.FuelConsumed==0,"Paused plant does not burn");Check(plant.Stock==plant.Storage,"Plant fills to capacity");
@@ -395,6 +428,7 @@ class Review
         int failedCredits = sim.Credits;
         Check(!sim.Build(StructureKind.Extractor, ore.Origin) && sim.Trains.Count == 5 && sim.Credits == failedCredits, "Duplicate build creates no train and charges nothing");
         RoverStopChecks();
+        PowerReadoutChecks();
         NetworkPlannerChecks();
         AutoDispatchChecks();
         Console.WriteLine("PASS scenarioAssertions="+scenarioChecks+" invariantAssertions="+invariantChecks+" timeSteps="+timeSteps+" sold="+sim.Sold+" ore="+sim.AccountedOre+"/"+sim.Produced+" fuel="+sim.AccountedFuel+"/"+sim.FuelProduced+" delivered="+sim.FuelDelivered+" consumed="+sim.FuelConsumed+" battery="+sim.Battery);
