@@ -56,7 +56,7 @@ class ContinuationTests(unittest.TestCase):
 
     def test_two_new_mines_add_solar_and_only_complete_when_both_are_connected(self):
         self.built()
-        expected = ['connect_conduit', 'build_solar', 'build_extractor', 'connect_conduit']
+        expected = ['connect_conduit', 'build_solar', 'build_solar', 'build_extractor', 'connect_conduit']
         for kind in expected:
             following = self.next_plan()
             self.assertEqual(following['actions'][0]['type'], kind)
@@ -69,8 +69,9 @@ class ContinuationTests(unittest.TestCase):
                 if len(self.data['state']['buildings']) == 1:
                     self.data['state']['deposits'] = [{'origin': {'x': 15, 'y': 11}, 'size': 2, 'cost': 250, 'resource': 'Ore'}]
             elif kind == 'build_solar':
-                self.data['state']['buildings'].append({'kind': 'Solar', 'origin': {'x': 2, 'y': 11}, 'connected': True})
-                self.data['state']['solarGeneration'] = 4
+                self.data['state']['buildings'].append({'kind': 'Solar', 'origin': dict(self.data['state']['solarSite']), 'connected': True})
+                self.data['state']['solarGeneration'] += 2
+                self.data['state']['solarSite']['y'] += 4
             elif kind == 'build_extractor':
                 self.data['state']['buildings'].append(base.mine(x=15, y=11, size=2, connected=False,
                                                                powerRoute={'possible': True, 'cost': 14}))

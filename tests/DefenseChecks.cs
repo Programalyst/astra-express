@@ -103,7 +103,7 @@ static class DefenseChecks
         Connect(defense, turret);
         float battery = defense.Battery;
         Advance(defense, 0.05f);
-        Check(enemy.Health == 25 && defense.LaserShots.Count == 1 && defense.Battery <= battery - 1.8f, "Powered turret spends battery on laser hit");
+        Check(ColonySimulation.TurretShotPower == 5 && enemy.Health == 25 && defense.LaserShots.Count == 1 && Math.Abs(defense.Battery - (battery - 5)) < 0.001f, "Powered turret spends exactly five battery power on laser hit");
         Advance(defense, 2);
         Check(defense.Aliens.Count == 0 && defense.AliensDefeated == 1 && defense.Trains.Count == 0, "Automated turret kills once and creates no train");
         turret.Health = 0;

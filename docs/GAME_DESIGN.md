@@ -94,7 +94,7 @@ Clicking into fog sets an exploration destination. Plan toward a reachable front
 
 At zero power, pause the movement order and resume when power is available. Proposed default: the rover uses the shared regenerating budget wherever it is, so it need not return to the colony to recharge. This makes a depleted battery recoverable without a rescue mechanic.
 
-Provide camera pan, zoom, Centre on Rover, and Centre on Colony. Keep camera rotation fixed for a consistent isometric view.
+Provide camera pan, zoom, Centre on Rover, and Centre on Colony. Hold the right mouse button and drag on the play area to pan in any tool mode without cancelling the selected tool or an in-progress route. A short right click still cancels placement on release; a six-UI-pixel drag threshold distinguishes it from panning. Middle-mouse dragging and WASD/arrow panning remain available. Manual panning stops rover-follow; V resumes following. Gestures cannot begin on UI and are cleared on focus loss without pausing the simulation. Keep camera rotation fixed for a consistent isometric view.
 
 ## Power system
 
@@ -122,7 +122,7 @@ Use a second infinite resource, provisionally named Fluxite. Its powered extract
 
 Proposed recovery rules: solar bootstraps fuel extraction, trains do not require battery power, and a connected fueled plant can restart with an empty shared battery. Keep solar useful as a dependable baseline when fuel delivery stops. Pause fuel consumption when no generation is needed, retain any partly used burn cycle, and show plant fuel stock, supply warnings, and generation separately from solar. Fuel consumed by a plant earns no delivery credits in the initial fuel-chain design. Exact plant footprint, price, buffer, burn rate, and output are still tuning decisions. Track fuel produced, stored, transported, and consumed independently of ore sold.
 
-Implemented tuning defaults: a plant occupies 2 by 2 clear cells, costs 250 credits, holds 48 Fluxite, and supplies up to 8 power/second. Each fuel unit provides 40 power; remaining burn energy is retained through pause, disconnection, or a satisfied battery. Solar generation is applied first. A plant consumes only enough energy to fill remaining battery headroom, so displayed actual output can be below its rated maximum. Fuel consumed counts units opened for combustion, including the unit whose remaining energy is displayed by the plant. The HUD fuel rate and plant output/status use a time-weighted one-second generation average, held between updates to prevent flicker near full battery. Actual energy accounting and model state still use instantaneous generation.
+Implemented tuning defaults: a plant occupies 2 by 2 clear cells, costs 250 credits, holds 48 Fluxite, and supplies up to 8 power/second. Each fuel unit provides 10 power; remaining burn energy is retained through pause, disconnection, or a satisfied battery. Solar generation is applied first. A plant consumes only enough energy to fill remaining battery headroom, so displayed actual output can be below its rated maximum. Fuel consumed counts units opened for combustion, including the unit whose remaining energy is displayed by the plant. The HUD fuel rate and plant output/status use a time-weighted one-second generation average, held between updates to prevent flicker near full battery. Actual energy accounting and model state still use instantaneous generation.
 
 The only Fluxite deposit is at `(13, 13)` (1 by 1). Ore sites are at `(10, 4)` (1 by 1, lowland), `(23, 13)` (1 by 1, centered on the eastern plateau), `(4, 23)` (2 by 2, northern plateau), and `(25, 25)` (2 by 2, low ground north of the eastern plateau, south port at `(25, 24)`). The last site was converted from Fluxite to Ore; its footprint and tier yield are unchanged. The eastern plateau's northern cliff is at row 22, with a north-facing descent at `(25, 22)` leading to this ore patch. Former deposit sites `(12, 16)`, `(13, 8)`, `(22, 16)`, `(15, 11)`, and `(20, 6)` are empty. Extractors use the same tier prices, mining power, storage, and upgrades for either resource. Ore and fuel have independent conservation ledgers.
 
@@ -183,13 +183,13 @@ Start with a colony, rover, one solar installation, and credits. Building each e
 | Starter 1 by 1 extractor power consumption | 1 power per second while working |
 | Starter 1 by 1 extractor storage | 24 ore |
 | 2 by 2 and 3 by 3 base output | Progressively higher than the starter tier; exact rates to be tuned |
-| Larger extractor cost, storage, and power demand | Tier-specific values to be tuned with connection length and train capacity |
+| Extractor power demand | 1 power/second per footprint tile × upgrade level: base 1×1 = 1, 2×2 = 4, 3×3 = 9 |
 | Conduit and track costs | 2 and 3 credits per new tile |
 | Train capacity and speed | 4 ore and 2 tiles per second |
 | Loading and unloading dwell | 1 second each |
 | Train acquisition | One free train included per extractor; no separate purchase |
 | Ore sale value | 8 credits per delivered unit |
-| Train capacity upgrades | 4 to 8 for 100 credits; 8 to 12 for 200 |
+| Train capacity upgrades | 4 → 8 → 12 → 16 → 20 → 24 cargo; successive upgrades cost 100, 200, 300, 400, and 500 credits |
 | Extractor output upgrades | Proposed multipliers of 1x, 2x, and 3x the patch's base output |
 | Starter-tier upgrade costs and power demand | 120 then 240 credits; 2 then 3 power per second respectively |
 | Battery reserve protected from extraction | 10 power |
@@ -207,6 +207,8 @@ Propose full refunds for recoverable purchases during the prototype, including p
 There is no debt, upkeep, death timer, or automatic failure at zero power. Pausing machines, refunding eligible purchases, and starter-panel regeneration must provide a path forward.
 
 ## Progression and interface
+
+The contextual hint above the build toolbar uses a compact, maximum 600-UI-pixel width. Text wraps onto additional lines and the panel grows vertically to avoid clipping; the build buttons remain unchanged.
 
 Guide the player through a nearby 1 by 1 discovery, extractor placement, power connection, rail construction, first payment, and an upgrade. Later exploration reveals a 2 by 2 opportunity and eventually a 3 by 3 frontier site. Celebrate these steps with concise prompts and small world effects. A completion card for the first profitable route can invite continued play; a gate or campaign finale is not required at this stage.
 

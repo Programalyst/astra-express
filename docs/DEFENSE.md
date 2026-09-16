@@ -16,7 +16,7 @@ Use **Turret** in the bottom toolbar after **Plant**, or press **7**. The compac
 
 - Cost: 100 credits; footprint: 1x1 clear, explored, level tile with a clear south port.
 - Connect the south port to colony conduits. No rail or owned train is needed.
-- Turrets automatically target the nearest revealed alien within seven tiles, deal 15 damage every 0.75 seconds, and consume 2 battery power per shot. They use power before extractor allocation, including the mining reserve. Empty batteries, disconnection, or disablement stop firing.
+- Turrets automatically target the nearest revealed alien within seven tiles, deal 15 damage every 0.75 seconds, and consume 5 battery power per shot. They use power before extractor allocation, including the mining reserve. Empty batteries, disconnection, or disablement stop firing.
 - Terrain can block the line of fire; buildings are not projectile occluders in this version. The cyan range outline is a radius, not a guarantee of line of sight. Lasers are instant hits with brief visible beams.
 - Requested art: `Assets/Kenny/kenney_space-kit/Models/FBX format/alien.fbx` and `turret_single.fbx`. These remain vendor assets and are referenced by the saved scene and scene-creation utility.
 - Beam LineRenderers use `Assets/Materials/Red Laser.mat`, assigned through the AstraGame **Laser Material** field. Edit that asset to tune the beam without affecting cyan power conduits or range outlines. A generated cyan material is only a fallback for an unassigned field.

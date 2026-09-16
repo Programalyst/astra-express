@@ -76,9 +76,13 @@ namespace AstraExpress
         private Vector3 cameraTarget;
         private Vector3 cameraVelocity;
         private bool followRover = true;
+        private bool rightPanPending;
+        private bool rightPanDragging;
+        private Vector2 rightPanOrigin;
         private GUIStyle titleStyle;
         private GUIStyle headingStyle;
         private GUIStyle bodyStyle;
+        private Rect hintPanelRect;
         private GUIStyle smallStyle;
         private GUIStyle buttonStyle;
         private GUIStyle labelStyle;
@@ -481,13 +485,17 @@ namespace AstraExpress
         private bool OverUi(Vector2 screen)
         {
             Vector2 point = new Vector2(screen.x / UiScale, (Screen.height - screen.y) / UiScale);
-            return OverNetworkPlacement(point) || OverLinkGuide(point) || point.y < 72 || point.y > UiHeight - 128 || ContextPanelContains(point);
+            return OverNetworkPlacement(point) || OverLinkGuide(point) || hintPanelRect.Contains(point) || point.y < 72 || point.y > UiHeight - 128 || ContextPanelContains(point);
         }
 
         private void HandleInput()
         {
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && (botBusy || pickingTile)) { CoachBotStop("Escape"); return; }
-            if (coachInputBlocked || Time.frameCount <= coachInputResumeFrame) return;
+            if (coachInputBlocked || Time.frameCount <= coachInputResumeFrame)
+            {
+                rightPanPending = rightPanDragging = false;
+                return;
+            }
             var mouse = Mouse.current;
             var keyboard = Keyboard.current;
             if (mouse == null) return;
@@ -514,7 +522,16 @@ namespace AstraExpress
                 cameraTarget += pan * (Time.unscaledDeltaTime * worldCamera.orthographicSize);
             }
             Vector2 screen = mouse.position.ReadValue();
-            if (mouse.middleButton.isPressed)
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                rightPanPending = !OverUi(screen);
+                rightPanDragging = false;
+                rightPanOrigin = screen;
+            }
+            if (rightPanPending && mouse.rightButton.isPressed && (screen - rightPanOrigin).sqrMagnitude >= 36 * UiScale * UiScale)
+                rightPanDragging = true;
+            bool rightPanning = rightPanPending && rightPanDragging && mouse.rightButton.isPressed;
+            if (mouse.middleButton.isPressed || rightPanning)
             {
                 Vector2 delta = mouse.delta.ReadValue();
                 if (delta.sqrMagnitude > 0) StopFollowingRover();
@@ -527,6 +544,14 @@ namespace AstraExpress
             cameraTarget.z = Mathf.Clamp(cameraTarget.z, 0, (ColonySimulation.Height - 1) * 2);
             PositionCamera();
             hover = null;
+            if (mouse.rightButton.wasReleasedThisFrame)
+            {
+                if (rightPanPending && !rightPanDragging && !OverUi(screen)) { routeStart = null; tool = Tool.Explore; }
+                rightPanPending = rightPanDragging = false;
+                return;
+            }
+            if (!mouse.rightButton.isPressed) rightPanPending = rightPanDragging = false;
+            if (rightPanPending) return;
             if (OverUi(screen)) return;
             var ray = worldCamera.ScreenPointToRay(screen);
             foreach (var hit in Physics.RaycastAll(ray, 200).OrderBy(hit => hit.distance))
@@ -535,7 +560,6 @@ namespace AstraExpress
                 hover = cell;
                 break;
             }
-            if (mouse.rightButton.wasPressedThisFrame) { routeStart = null; tool = Tool.Explore; }
             if (pickingTile)
             {
                 if (mouse.leftButton.wasPressedThisFrame && hover.HasValue) { pickedTile = hover; pickingTile = false; coachTimer = 1; }
@@ -605,6 +629,11 @@ namespace AstraExpress
             followRover = true;
             cameraVelocity = Vector3.zero;
         }
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) rightPanPending = rightPanDragging = false;
+        }
+
         private void PositionCamera() => worldCamera.transform.position = cameraTarget - worldCamera.transform.forward * 48;
         private void CenterColony() { StopFollowingRover(); cameraTarget = Position(7, 8); PositionCamera(); }
         private void CenterRover() { followRover = true; cameraVelocity = Vector3.zero; cameraTarget = Position(Simulation.RoverX, Simulation.RoverY); PositionCamera(); }
@@ -779,7 +808,7 @@ namespace AstraExpress
                 if (ownedTrain != null)
                 {
                     int trainCost = ownedTrain.CapacityLevel * 100;
-                    bool trainMaximum = ownedTrain.CapacityLevel >= 3;
+                    bool trainMaximum = ownedTrain.CapacityLevel >= ColonySimulation.MaxTrainCapacityLevel;
                     if (Button(new Rect(left, row + 181, width, 34), trainMaximum ? $"Train capacity {ownedTrain.Capacity} / maximum" : $"Train capacity {ownedTrain.Capacity} to {ownedTrain.Capacity + 4} / {trainCost} cr", enabled: !trainMaximum && Simulation.Credits >= trainCost)) Simulation.UpgradeTrain(ownedTrain);
                 }
             }
@@ -798,7 +827,7 @@ namespace AstraExpress
                     row += 39;
                 }
                 if (Button(new Rect(left, row + 4, width, 32), selected.Paused ? "Resume plant" : "Pause plant")) selected.Paused = !selected.Paused;
-                GUI.Label(new Rect(left, row + 45, width, 53), "1 Fluxite = 40 power. Assign this plant from a Fluxite extractor. Unused fuel is retained.", smallStyle);
+                GUI.Label(new Rect(left, row + 45, width, 53), $"1 Fluxite = {ColonySimulation.FuelEnergy} power. Assign this plant from a Fluxite extractor. Unused fuel is retained.", smallStyle);
             }
             else if (selected != null)
             {
@@ -825,7 +854,6 @@ namespace AstraExpress
             for (int index = 0; index < names.Length; index++)
                 if (ToolbarCard(new Rect(28 + index * 147, bottom + 13, 139, 44), names[index], subtitles[index], icons[index], (index + 1).ToString(), tool == (Tool)index && !trainSelected, index == 4 || index == 1 ? gold : cyan)) SetTool((Tool)index);
             GUI.Label(new Rect(1067, bottom + 12, UiWidth - 1091, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
-            Fill(new Rect(16, bottom - 38, UiWidth - 32, 30), new Color(0.045f, 0.07f, 0.12f, 0.9f));
             string message = Simulation.Message;
             if (tool == Tool.Conduit || tool == Tool.Rail)
             {
@@ -841,7 +869,11 @@ namespace AstraExpress
                 bool valid = Simulation.CanBuild(BuildKind, hover.Value, out _, out int size, out int cost, out string reason);
                 message = valid ? $"BUILD {tool.ToString().ToUpper()}   {size} x {size} tiles   /   {cost} credits   /   Click to confirm." : reason;
             }
-            GUI.Label(new Rect(28, bottom - 33, UiWidth - 60, 25), message, bodyStyle);
+            float hintWidth = Mathf.Min(600, UiWidth - 32);
+            float hintHeight = Mathf.Max(48, bodyStyle.CalcHeight(new GUIContent(message), hintWidth - 24) + 12);
+            hintPanelRect = new Rect(16, bottom - hintHeight - 8, hintWidth, hintHeight);
+            Fill(hintPanelRect, new Color(0.045f, 0.07f, 0.12f, 0.9f));
+            GUI.Label(new Rect(hintPanelRect.x + 12, hintPanelRect.y + 6, hintWidth - 24, hintHeight - 12), message, bodyStyle);
         }
 
         private void DrawWorldLabels()

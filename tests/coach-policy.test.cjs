@@ -76,7 +76,9 @@ test('upgrade suggestions obey affordability and max level',()=>{
   const s=state({buildings:[mine({connected:true,railConnected:true,served:true})],trainPhase:'Loading',deliveries:2,credits:99});
   assert.equal(advise(s).some(t=>t.id==='upgrade-train'),false);
   assert.equal(advise({...s,credits:100}).some(t=>t.id==='upgrade-train'),true);
-  assert.equal(advise({...s,credits:1000,trains:s.trains.map(train=>({...train,capacityLevel:3}))}).some(t=>t.id==='upgrade-train'),false);
+  for (const capacityLevel of [3, 4, 5])
+    assert.equal(advise({...s,credits:1000,trains:s.trains.map(train=>({...train,capacityLevel,capacity:capacityLevel*4}))}).some(t=>t.id==='upgrade-train'),true);
+  assert.equal(advise({...s,credits:1000,trains:s.trains.map(train=>({...train,capacityLevel:6,capacity:24}))}).some(t=>t.id==='upgrade-train'),false);
 });
 test('context signatures reject restart, purchases, tool changes and new construction',()=>{
   const s=state(),key=signature(s,advise(s));

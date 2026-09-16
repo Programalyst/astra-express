@@ -29,7 +29,7 @@ namespace AstraExpress
         public const int TurretCost = 100;
         public const float TurretRange = 7;
         public const float TurretDamage = 15;
-        public const float TurretShotPower = 2;
+        public const float TurretShotPower = 5;
         public const float TurretInterval = 0.75f;
         public const float AlienHealth = 40;
         public const float AlienSpeed = 1;

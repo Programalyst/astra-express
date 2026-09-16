@@ -4,7 +4,7 @@
 
 ## Extractor-owned trains — 15 September 2026
 
-Every successful extractor build now includes its own free train at the colony depot, including Fluxite sites. No starter locomotive, train purchase, reassignment, or four-train cap remains. Select an extractor for capacity upgrades (4 → 8 → 12, costing 100 then 200 credits), cargo/status, and park/restart controls. Rails still auto-start ready services; manual parking preserves ownership and completes carried deliveries before stopping. Historical fleet notes below describe the superseded system.
+Every successful extractor build now includes its own free train at the colony depot, including Fluxite sites. No starter locomotive, train purchase, reassignment, or four-train cap remains. Select an extractor for capacity upgrades (4 → 8 → 12 → 16 → 20 → 24, costing 100, 200, 300, 400, then 500 credits), cargo/status, and park/restart controls. Rails still auto-start ready services; manual parking preserves ownership and completes carried deliveries before stopping. Historical fleet notes below describe the superseded system.
 
 Validation: 168 JavaScript tests and 82 Python tests pass, plus 908 simulation scenarios, 46,920 conservation invariants, 25 exploration assertions and 42 bot-control checks. Simulation coverage includes five uniquely owned trains, no extra charge for trains, duplicate-build rejection, owner-preserving parking, and independent capacity upgrades. The rebuilt Chrome game at 1336×768 was checked for the removed Fleet tab, a 150-credit extractor purchase, its 100-credit capacity upgrade, automatic rail dispatch, paid deliveries, and park/restart. The final label-only rebuild was checked again with an unpowered extractor to confirm its capacity control remains available. No Sites deployment was made for this update.
 
@@ -18,7 +18,7 @@ Validation: Unity compiled cleanly and a fresh Web export succeeded in 24 second
 
 - Infinite green Fluxite deposits at `(13, 3)` (1x1) and `(4, 17)` (2x2), with ordinary extractor costs and output upgrades.
 - Tool **6 / Plant** builds a 2x2 plant for 250 credits on clear, explored terrain. Its south port needs conduits for generation and rails for deliveries.
-- Plants store 48 fuel and generate up to 8 power/second. Each Fluxite provides 40 power. Plants retain unused burn energy and stop consuming fuel when disconnected, paused, or the battery is satisfied.
+- Plants store 48 fuel and generate up to 8 power/second. Each Fluxite provides 10 power. Plants retain unused burn energy and stop consuming fuel when disconnected, paused, or the battery is satisfied.
 - **Fleet** supports up to four locomotives; the first is free, additional trains cost 150 credits. Arrow buttons select a train for its individual capacity upgrades and park command.
 - A Fluxite extractor's destination button cycles available plants. Dispatch assigns the first idle train; ore extractors always deliver to the colony.
 - Ore pays 8 credits per unit delivered. Fuel never pays credits. Both inventories are independently conserved through production, loading, delivery, and combustion.

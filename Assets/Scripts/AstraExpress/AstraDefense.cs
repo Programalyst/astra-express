@@ -128,7 +128,7 @@ namespace AstraExpress
             Stat(left, ref row, "HEALTH", $"{selected.Health:0} / 100");
             Stat(left, ref row, "RANGE", $"{ColonySimulation.TurretRange:0} tiles / terrain LOS");
             Stat(left, ref row, "LASER", "15 damage / 0.75s");
-            Stat(left, ref row, "BATTERY", "2 power per shot");
+            Stat(left, ref row, "BATTERY", $"{ColonySimulation.TurretShotPower} power per shot");
             if (!selected.Connected && Button(new Rect(left, row + 4, width, 34), "Show power connection", active: true))
                 CoachGuideLink($"Conduit,{selected.Origin.X},{selected.Origin.Y}");
             GUI.Label(new Rect(left, row + 48, width, 45), "Automatically targets visible aliens. Cliffs can block shots. No rail connection needed.", smallStyle);

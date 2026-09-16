@@ -104,7 +104,7 @@
     const selectedTurret = (s.buildings || []).find(b => b.kind === "Turret" && same(b.origin, s.selected));
     if (selectedTurret && !selectedTurret.connected) return [routeTip(s, selectedTurret, false)];
     if (s.raidsStarted && s.tool === "Explore" && !(s.buildings || []).some(b => b.kind === "Turret" && b.connected && !b.disabled))
-      return [tip("defend-base", "Prepare for northwest alien waves", "Large-scale mining has awakened aliens. Wired laser turrets defend a seven-tile radius using 2 battery power per shot.", ["Choose Turret after Plant in the bottom toolbar or press 7, place it on clear explored ground, then connect its south port."], null)];
+      return [tip("defend-base", "Prepare for northwest alien waves", "Large-scale mining has awakened aliens. Wired laser turrets defend a seven-tile radius using 5 battery power per shot.", ["Choose Turret after Plant in the bottom toolbar or press 7, place it on clear explored ground, then connect its south port."], null)];
     if (s.battery < 20 && s.demand > s.generation) {
       const active = ordered.find(b => b.connected && !b.paused && b.stock < b.storage);
       if (active) return [tip(`power-low-${active.origin.x}-${active.origin.y}`, "Let the battery recover",
@@ -174,7 +174,7 @@
     if (s.deliveries === 0 && earningTrain) return [tip("first-delivery", "Your railway is working", `The ore train is ${{ToMine:"travelling to the mine",Loading:"loading ore",ToColony:"returning to the colony",Unloading:"unloading ore",ReturningToDepot:"returning to the depot"}[earningTrain.phase] || "running"}. It earns credits when cargo unloads at the colony.`, ["Let the train complete its trip; the service repeats automatically.", "Watch ore delivered and credits in the top bar."], s.colonyPort)];
     const options = [];
     if (s.generation <= s.demand && s.solarSite && s.credits >= 100) options.push(tip("expand-power", "Make room for more power", "Another connected solar array adds 2 power/s and gives your mines room to grow.", ["Press 3 for Solar and use this clear 2 × 2 footprint.", "Spend 100 credits to place it, then wire its south port with Conduit."], s.solarSite));
-    const upgrade = fleet.trains.find(t => t.index === s.selectedTrainIndex && t.capacityLevel < 3) || fleet.trains.find(t => t.capacityLevel < 3 && t.resource !== "Fluxite");
+    const upgrade = fleet.trains.find(t => t.index === s.selectedTrainIndex && t.capacityLevel < 6) || fleet.trains.find(t => t.capacityLevel < 6 && t.resource !== "Fluxite");
     if (upgrade && s.credits >= upgrade.capacityLevel * 100) options.push({...tip("upgrade-train", "Carry more on each trip", `Locomotive ${upgrade.index + 1} holds ${upgrade.capacity} cargo. Another 4 slots cost ${upgrade.capacityLevel * 100} credits; this upgrades that train only.`, ["Select the extractor that owns this train.", `Choose Train capacity / ${upgrade.capacityLevel * 100} cr.`], upgrade.owner || upgrade.source), trainIndex:upgrade.index});
     const nextDeposit = (s.deposits || []).find(d => !isFuel(d) && d.buildable && s.credits >= d.cost) || (s.deposits || []).find(d => d.buildable && s.credits >= d.cost);
     if (nextDeposit) options.unshift(tip(`expand-mine-${nextDeposit.origin.x}-${nextDeposit.origin.y}`, isFuel(nextDeposit) ? "You found Fluxite fuel" : "You found another ore patch",

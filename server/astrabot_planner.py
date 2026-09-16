@@ -88,7 +88,10 @@ def _extractor_demand(building):
     if demand > 0:
         return demand
     size = building.get('size', 1)
-    return float(size if type(size) is int and 1 <= size <= 3 else 1)
+    size = size if type(size) is int and 1 <= size <= 3 else 1
+    level = building.get('level', 1)
+    level = level if type(level) is int and 1 <= level <= 3 else 1
+    return float(size * size * level)
 
 
 def _route_cost(route, missing_reason, blocked_reason='Known route is blocked'):
@@ -221,7 +224,7 @@ def expansion_progress(state, spec):
     visible = [d for d in state.get('deposits', []) if isinstance(d, dict) and point(d.get('origin')) not in occupied
                and d.get('resource', 'Ore') == spec['resource'] and d.get('buildable') is not False]
     visible_sizes = sorted(d.get('size', 1) if type(d.get('size', 1)) is int and 1 <= d.get('size', 1) <= 3 else 1 for d in visible)
-    projected_extra = sum(visible_sizes[:remaining]) + max(0, remaining - len(visible_sizes))
+    projected_extra = sum(size * size for size in visible_sizes[:remaining]) + max(0, remaining - len(visible_sizes))
     projected_demand = rated_demand + projected_extra
     count_ready = len(new) >= spec['requestedAdditionalExtractors'] if spec['mode'] == 'additional' else len(current) >= spec['targetExtractorCount']
     power_ready = len(connected) >= (spec['requestedAdditionalExtractors'] if spec['mode'] == 'additional' else spec['targetExtractorCount'])
@@ -385,15 +388,15 @@ def validate_actions(actions, data):
             size = deposit.get('size', 1)
             if type(size) is not int or not 1 <= size <= 3:
                 raise ValueError('Invalid resource footprint')
-            if objective and objective.get('requiresSolarCapacity') and solar_capacity + 1e-6 < rated_demand + size:
+            if objective and objective.get('requiresSolarCapacity') and solar_capacity + 1e-6 < rated_demand + size * size:
                 raise ValueError('Add solar capacity before another extractor')
             credit -= cost
             buildings[xy] = {'kind': 'Extractor', 'resource': deposit.get('resource', 'Ore'), 'origin': {'x': xy[0], 'y': xy[1]},
-                             'port': {'x': xy[0], 'y': xy[1] - 1}, 'size': size, 'demand': size,
+                             'port': {'x': xy[0], 'y': xy[1] - 1}, 'size': size, 'demand': size * size,
                              'connected': False, 'railConnected': False, 'served': False}
             count += 1
             idle += 1
-            rated_demand += size
+            rated_demand += size * size
         if kind in ('build_solar', 'build_plant'):
             site_name = 'solarSite' if kind == 'build_solar' else 'plantSite'
             existing_solar = buildings.get(xy) if kind == 'build_solar' else None
@@ -607,7 +610,7 @@ def guarded_power_expansion(data, objective):
                                [_plan_action('auto_explore', 'Survey reachable fog until another Ore deposit is fully revealed.')],
                                'Check the fresh map for an unused revealed Ore deposit.')
         size, cost, origin = min(deposits, key=lambda item: (item[0], item[1], item[2][0], item[2][1]))
-        if solar + 1e-6 < demand + size:
+        if solar + 1e-6 < demand + size * size:
             return _solar_step(state, credits)
         if credits + 1e-6 < cost:
             return _credit_step(state, credits, cost, 'Building the next extractor')

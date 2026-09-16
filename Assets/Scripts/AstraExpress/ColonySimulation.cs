@@ -70,7 +70,7 @@ namespace AstraExpress
         public float ShotCooldown;
         public Cell Port => new Cell(Origin.X, Origin.Y - 1);
         public int Storage => Kind == StructureKind.PowerPlant ? 48 : 24 * Size;
-        public float Demand => Size * Level;
+        public float Demand => Size * Size * Level;
         public float Rate => Deposit == null ? 0 : Deposit.Rate * Level;
         public bool Contains(Cell cell) => cell.X >= Origin.X && cell.X < Origin.X + Size && cell.Y >= Origin.Y && cell.Y < Origin.Y + Size;
     }
@@ -102,7 +102,8 @@ namespace AstraExpress
         public const float Reserve = 10;
         public const int PlantCost = 250;
         public const float PlantOutput = 8;
-        public const float FuelEnergy = 40;
+        public const float FuelEnergy = 10;
+        public const int MaxTrainCapacityLevel = 6;
         public static readonly Cell[] Directions = { new Cell(1, 0), new Cell(-1, 0), new Cell(0, 1), new Cell(0, -1) };
         public readonly bool[,] Revealed = new bool[Width, Height];
         public readonly TerrainGrid Terrain = new TerrainGrid();
@@ -292,7 +293,7 @@ namespace AstraExpress
             Credits -= cost;
             Revision++;
             Reconnect();
-            Message = kind == StructureKind.Turret ? "Laser turret built. Connect its south port to colony power. Each shot uses 2 battery power." : kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; each connected extractor's train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built with its own free train. Connect power and rails; its train dispatches when the route is complete.";
+            Message = kind == StructureKind.Turret ? $"Laser turret built. Connect its south port to colony power. Each shot uses {TurretShotPower} battery power." : kind == StructureKind.PowerPlant ? "Power plant built. Connect conduits and rails to its south port; each connected extractor's train will bring Fluxite automatically." : kind == StructureKind.Solar ? "Solar built. Wire its cyan port to the colony's power network." : "Extractor built with its own free train. Connect power and rails; its train dispatches when the route is complete.";
             if (kind == StructureKind.Extractor || kind == StructureKind.PowerPlant) AutoDispatchReadyServices();
             return true;
         }
@@ -515,7 +516,7 @@ namespace AstraExpress
         {
             train = train ?? Train;
             if (train == null || !Trains.Contains(train)) return Fail("Select an extractor with a train first.");
-            if (train.CapacityLevel >= 3) return Fail("Train capacity is fully upgraded.");
+            if (train.CapacityLevel >= MaxTrainCapacityLevel) return Fail("Train capacity is fully upgraded.");
             int cost = train.CapacityLevel * 100;
             if (Credits < cost) return Fail($"Need {cost} credits for this upgrade.");
             Credits -= cost;

@@ -169,7 +169,7 @@ class BotControlChecks
         var connectedMines = expansion.Simulation.Structures.Where(s => s.Kind == StructureKind.Extractor).ToList();
         Check(expansion.Status == "complete" && connectedMines.Count == 2 && connectedMines.All(s => s.Connected), "AstraBot can power two extractors through the same colony grid");
         Check(connectedMines.All(s => expansion.Simulation.PoweredCells.Contains(s.Port)), "Both extractor south ports visibly belong to the powered network");
-        Check(expansion.Simulation.SolarGeneration == 4 && connectedMines.Sum(s => s.Demand) == 3, "One added array covers the two extractors' rated three-power demand");
+        Check(expansion.Simulation.SolarGeneration == 4 && connectedMines.Sum(s => s.Demand) == 5, "Two extractors demand five power; four solar power leaves a one-power shortfall");
         Check(connectedMines.All(s => expansion.Simulation.RailRoute(s) == null), "Power-only expansion does not add unrequested rail service");
 
         foreach (string interruption in new[] { "stop", "pause", "budget" })

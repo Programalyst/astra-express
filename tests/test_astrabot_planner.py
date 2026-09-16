@@ -31,7 +31,7 @@ def plan(actions, status='ready'):
 
 def mine(resource='Ore', x=11, y=7, size=1, connected=True, rail_connected=True, served=False, **extra):
     return {'kind': 'Extractor', 'resource': resource, 'origin': {'x': x, 'y': y}, 'port': {'x': x, 'y': y - 1},
-            'size': size, 'demand': size, 'connected': connected, 'railConnected': rail_connected, 'served': served,
+            'size': size, 'demand': size * size, 'connected': connected, 'railConnected': rail_connected, 'served': served,
             **extra}
 
 
@@ -247,14 +247,14 @@ class PlanValidationTests(unittest.TestCase):
         data = request_data(); data['goal'] = 'Build another Ore extractor powered by solar'
         data['state'].update(buildings=[mine(), mine(x=15, y=11, size=2)], solarGeneration=2, demand=0)
         objective = prepared_expansion(data)['serverProgress']['expansionObjective']
-        self.assertEqual(objective['ratedExtractorDemand'], 3)
-        self.assertEqual(objective['currentSolarShortfall'], 1)
+        self.assertEqual(objective['ratedExtractorDemand'], 5)
+        self.assertEqual(objective['currentSolarShortfall'], 3)
         self.assertFalse(objective['goalSatisfied'])
 
     def test_solar_capacity_must_precede_next_extractor_and_its_connection(self):
         progress = planner.PlannerProgress(); data = request_data()
         data['goal'] = 'Build another Ore extractor and power it with solar'
-        data['state'].update(buildings=[mine()], solarGeneration=2, solarSite={'x': 2, 'y': 11},
+        data['state'].update(buildings=[mine()], solarGeneration=4, solarSite={'x': 2, 'y': 11},
                              solarSitePowerRoute={'possible': True, 'cost': 10}, credits=500,
                              deposits=[{'origin': {'x': 15, 'y': 11}, 'cost': 250, 'size': 2, 'resource': 'Ore'}])
         _, initial = progress.prepare(data)
@@ -309,6 +309,12 @@ class PlanValidationTests(unittest.TestCase):
 
         data['state']['buildings'].append({'kind': 'Solar', 'origin': {'x': 2, 'y': 11}, 'connected': True})
         data['state']['solarGeneration'] = 4
+        current = progress.prepare(data)[1]
+        recovered = planner.parse_plan(json.dumps(plan([], 'complete')), current)
+        self.assertEqual([a['type'] for a in recovered['actions']], ['build_solar'])
+
+        data['state']['buildings'].append({'kind': 'Solar', 'origin': {'x': 2, 'y': 15}, 'connected': True})
+        data['state']['solarGeneration'] = 6
         current = progress.prepare(data)[1]
         recovered = planner.parse_plan(json.dumps(plan([], 'complete')), current)
         self.assertEqual([a['type'] for a in recovered['actions']], ['build_extractor'])

@@ -196,6 +196,11 @@ class Review
 
     static void PowerReadoutChecks()
     {
+        Check(ColonySimulation.FuelEnergy == 10, "Each Fluxite provides 10 power");
+        Check(ColonySimulation.PlantOutput == 8, "Plant maximum output remains 8 power per second");
+        for (int size = 1; size <= 3; size++)
+            for (int level = 1; level <= 3; level++)
+                Check(new Structure { Kind = StructureKind.Extractor, Size = size, Level = level }.Demand == size * size * level, "Extractor demand scales with footprint area and upgrade level");
         var plant = new Structure { Kind = StructureKind.PowerPlant, Connected = true, Generation = 8 };
         plant.SampleGeneration(0.25f);
         Check(plant.AverageGeneration == 0, "Readout waits for a full sampling window");
@@ -464,6 +469,17 @@ class Review
         int failedCredits = sim.Credits;
         Check(!sim.Build(StructureKind.Extractor, ore.Origin) && sim.Trains.Count == 5 && sim.Credits == failedCredits, "Duplicate build creates no train and charges nothing");
         RoverStopChecks();
+        var upgradedTrain = sim.TrainFor(ore);
+        for (int level = 1; level < 6; level++)
+        {
+            int beforeUpgrade = sim.Credits;
+            Check(sim.UpgradeTrain(upgradedTrain), "Train can upgrade through every tier to 24 cargo");
+            Check(upgradedTrain.Capacity == (level + 1) * 4 && upgradedTrain.CapacityLevel == level + 1, "Upgrade adds four cargo slots");
+            Check(beforeUpgrade - sim.Credits == level * 100, "Upgrade charges the current tier cost");
+        }
+        int maximumCredits = sim.Credits;
+        Check(!sim.UpgradeTrain(upgradedTrain) && sim.Credits == maximumCredits && upgradedTrain.Capacity == 24, "Maximum capacity rejects upgrades without charging");
+        Check(second.Capacity == 8, "Higher tiers do not change other trains");
         ExtractorConduitChecks();
         PowerReadoutChecks();
         NetworkPlannerChecks();
