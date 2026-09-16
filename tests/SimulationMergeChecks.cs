@@ -158,6 +158,42 @@ class Review
             ":B=" + string.Join(";", sim.Structures.Select(b => b.Origin + "=" + b.Connected));
     }
 
+    static void ExtractorConduitChecks()
+    {
+        foreach (var site in new[] { new Cell(10, 4), new Cell(13, 13), new Cell(25, 25), new Cell(4, 23) })
+        {
+            var simulation = new ColonySimulation(enableRaids: false);
+            simulation.Reveal(16, 16, 100);
+            var deposit = simulation.DepositAt(site);
+            var port = new Cell(site.X, site.Y - 1);
+            var route = simulation.FindPath(simulation.Colony.Port, port, cell => simulation.StructureAt(cell) == null);
+            Check(simulation.Lay(route, false), "Wire deposit port before construction");
+            var crossing = ColonySimulation.Corridor(port, new Cell(site.X, site.Y + deposit.Size));
+            Check(simulation.Lay(crossing, false), "Lay conduit across the deposit footprint");
+            var conduits = new System.Collections.Generic.HashSet<Cell>(simulation.Conduits);
+            var powered = new System.Collections.Generic.HashSet<Cell>(simulation.PoweredCells);
+            int credits = simulation.Credits;
+            Check(simulation.CanBuild(StructureKind.Extractor, site, out _, out _, out int cost, out _) && cost == deposit.Price, "Conduits do not block extractor preview or alter price");
+            var extractor = Build(simulation, StructureKind.Extractor, site);
+            Check(extractor.Connected && simulation.Credits == credits - deposit.Price, "Extractor builds powered at normal price");
+            Check(simulation.Conduits.SetEquals(conduits) && simulation.PoweredCells.SetEquals(powered), "Building preserves conduit cells and downstream power");
+            Check(simulation.CanLay(crossing, false, out int reuseCost, out _) && reuseCost == 0, "Conduits beneath extractor remain reusable");
+            Check(simulation.TryPlanNetworkRoute(port, crossing.Last(), false, false, out _, out int plannedCost, out _) && plannedCost == 0, "Power planner reuses conduit through extractor");
+            Check(!simulation.CanLay(crossing, true, out _, out _), "Rails cannot cross an extractor footprint");
+            if (deposit.Size > 1)
+                Check(!simulation.CanLay(new[] { new Cell(site.X + 1, site.Y) }, false, out _, out _), "Cannot add new conduit beneath an existing extractor");
+        }
+        var blocked = new ColonySimulation(enableRaids: false);
+        blocked.Reveal(16, 16, 100);
+        var oreSite = new Cell(10, 4);
+        Check(blocked.Lay(new[] { oreSite }, true), "Place rail over an unmined deposit");
+        int remainingCredits = blocked.Credits;
+        Check(!blocked.Build(StructureKind.Extractor, oreSite) && blocked.Credits == remainingCredits && blocked.DepositAt(oreSite).Extractor == null, "Tracks still block extractor placement without charging");
+        var solarSite = new Cell(1, 1);
+        Check(blocked.Lay(new[] { solarSite }, false), "Place conduit on a clear building site");
+        Check(!blocked.CanBuild(StructureKind.Solar, solarSite, out _, out _, out _, out _), "Other buildings still require clear infrastructure footprints");
+    }
+
     static void PowerReadoutChecks()
     {
         var plant = new Structure { Kind = StructureKind.PowerPlant, Connected = true, Generation = 8 };
@@ -428,6 +464,7 @@ class Review
         int failedCredits = sim.Credits;
         Check(!sim.Build(StructureKind.Extractor, ore.Origin) && sim.Trains.Count == 5 && sim.Credits == failedCredits, "Duplicate build creates no train and charges nothing");
         RoverStopChecks();
+        ExtractorConduitChecks();
         PowerReadoutChecks();
         NetworkPlannerChecks();
         AutoDispatchChecks();

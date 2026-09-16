@@ -63,10 +63,9 @@ namespace AstraExpress
         {
             var anchors = new List<CoachAnchor>();
             void Add(string id, string label, Rect rect) => anchors.Add(new CoachAnchor { id = id, label = label, x = rect.x / UiWidth, y = rect.y / UiHeight, width = rect.width / UiWidth, height = rect.height / UiHeight });
-            string[] names = { "explore", "extractor", "solar", "conduit", "rail", "plant" };
+            string[] names = { "explore", "extractor", "solar", "conduit", "rail", "plant", "turret" };
             for (int i = 0; i < names.Length; i++) Add("tool-" + names[i], names[i], new Rect(28 + i * 147, UiHeight - 75, 139, 44));
             Add("pause", Simulation.Paused ? "Resume" : "Pause", new Rect(UiWidth - 214, 17, 92, 36));
-            if (DefensePanel != Rect.zero) Add("tool-turret", "Build laser turret", new Rect(DefensePanel.x + 12, DefensePanel.y + 58, DefensePanel.width - 24, 32));
             if (RepairPanel != Rect.zero) Add("repair-building", "Repair building", new Rect(RepairPanel.x + 12, RepairPanel.y + 26, RepairPanel.width - 24, 29));
             if (ConnectionPanelVisible) Add("connection-cancel", NetworkTool ? "Cancel connection" : "Dismiss connection status", ConnectionCancelRect);
             if (!SidebarVisible || NetworkTool) return anchors.ToArray();

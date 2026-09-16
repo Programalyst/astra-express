@@ -26,7 +26,7 @@ namespace AstraExpress
 
     public sealed partial class ColonySimulation
     {
-        public const int TurretCost = 150;
+        public const int TurretCost = 100;
         public const float TurretRange = 7;
         public const float TurretDamage = 15;
         public const float TurretShotPower = 2;

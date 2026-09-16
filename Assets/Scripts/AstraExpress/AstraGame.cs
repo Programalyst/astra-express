@@ -56,6 +56,8 @@ namespace AstraExpress
         private Material darkPowerMaterial;
         private Material railMaterial;
         private Material orangeMaterial;
+        private Material orePayloadMaterial;
+        private Material fluxitePayloadMaterial;
         private Material whiteMaterial;
         private Material previewMaterial;
         private Material fuelMaterial;
@@ -140,9 +142,13 @@ namespace AstraExpress
             darkPowerMaterial = MakeMaterial(new Color(0.29f, 0.41f, 0.47f));
             railMaterial = MakeMaterial(new Color(0.80f, 0.84f, 0.85f));
             orangeMaterial = MakeMaterial(new Color(0.95f, 0.52f, 0.20f));
+            var oreRenderer = OreModel != null ? OreModel.GetComponentInChildren<Renderer>(true) : null;
+            orePayloadMaterial = oreRenderer != null && oreRenderer.sharedMaterial != null ? oreRenderer.sharedMaterial : orangeMaterial;
             whiteMaterial = MakeMaterial(ink);
             previewMaterial = MakeMaterial(cyan, 0.25f);
             fuelMaterial = MakeMaterial(new Color(0.38f, 0.95f, 0.67f), 0.45f);
+            var fluxiteRenderer = FluxiteModel != null ? FluxiteModel.GetComponentInChildren<Renderer>(true) : null;
+            fluxitePayloadMaterial = fluxiteRenderer != null && fluxiteRenderer.sharedMaterial != null ? fluxiteRenderer.sharedMaterial : fuelMaterial;
             ResetWorld();
         }
 
@@ -334,7 +340,7 @@ namespace AstraExpress
             {
                 MoveVisual(trainVisuals[train], Position(train.X, train.Y, 0.24f));
                 cargoVisuals[train].gameObject.SetActive(train.Cargo > 0);
-                cargoVisuals[train].sharedMaterial = train.Resource == ResourceKind.Fluxite ? fuelMaterial : orangeMaterial;
+                cargoVisuals[train].sharedMaterial = train.Resource == ResourceKind.Fluxite ? fluxitePayloadMaterial : orePayloadMaterial;
             }
             UpdatePreview();
             diagnosticTimer += Time.unscaledDeltaTime;
@@ -394,7 +400,7 @@ namespace AstraExpress
                 if (trainVisuals.ContainsKey(train)) continue;
                 var visual = Model(TrainModel, "Astra locomotive " + (Simulation.Trains.IndexOf(train) + 1), worldRoot, Position(train.X, train.Y, 0.24f), 1.7f, 0.8f).transform;
                 trainVisuals[train] = visual;
-                cargoVisuals[train] = Box("Freight payload", visual, new Vector3(0, 0.7f, -0.2f), new Vector3(0.45f, 0.3f, 0.55f), orangeMaterial).GetComponent<Renderer>();
+                cargoVisuals[train] = Box("Freight payload", visual, new Vector3(0, 0.7f, -0.2f), new Vector3(0.45f, 0.3f, 0.55f), orePayloadMaterial).GetComponent<Renderer>();
             }
             foreach (var structure in Simulation.Structures)
             {
@@ -813,12 +819,12 @@ namespace AstraExpress
         {
             float bottom = UiHeight - 88;
             Panel(new Rect(16, bottom, UiWidth - 32, 72));
-            string[] names = { "Explore", "Extractor", "Solar", "Conduit", "Rail", "Plant" };
-            string[] subtitles = { "Reveal terrain", "From 150 cr", "100 cr / +2 power", "2 cr per tile", "3 cr per tile", "250 cr / Fluxite" };
-            string[] icons = { "rover", "extractor", "solar", "conduit", "rail", "solar" };
+            string[] names = { "Explore", "Extractor", "Solar", "Conduit", "Rail", "Plant", "Turret" };
+            string[] subtitles = { "Reveal terrain", "From 150 cr", "100 cr / +2 power", "2 cr per tile", "3 cr per tile", "250 cr / Fluxite", $"{ColonySimulation.TurretCost} cr / laser" };
+            string[] icons = { "rover", "extractor", "solar", "conduit", "rail", "solar", "focus" };
             for (int index = 0; index < names.Length; index++)
                 if (ToolbarCard(new Rect(28 + index * 147, bottom + 13, 139, 44), names[index], subtitles[index], icons[index], (index + 1).ToString(), tool == (Tool)index && !trainSelected, index == 4 || index == 1 ? gold : cyan)) SetTool((Tool)index);
-            GUI.Label(new Rect(920, bottom + 12, UiWidth - 944, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
+            GUI.Label(new Rect(1067, bottom + 12, UiWidth - 1091, 50), "WASD: pan  Scroll: zoom\nSpace: pause\nR: prefer other bend", smallStyle);
             Fill(new Rect(16, bottom - 38, UiWidth - 32, 30), new Color(0.045f, 0.07f, 0.12f, 0.9f));
             string message = Simulation.Message;
             if (tool == Tool.Conduit || tool == Tool.Rail)

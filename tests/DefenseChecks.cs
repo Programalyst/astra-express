@@ -93,7 +93,9 @@ static class DefenseChecks
         Advance(assault, 10.1f);
         Check(solar.Health == 100 && assault.SolarGeneration == 2 && assault.Credits == credits, "Free repair restores generation");
         var defense = Game();
+        int creditsBeforeTurret = defense.Credits;
         var turret = Build(defense, StructureKind.Turret, new Cell(1, 4));
+        Check(ColonySimulation.TurretCost == 100 && defense.Credits == creditsBeforeTurret - 100, "Laser turret costs exactly 100 credits");
         var enemy = new Alien { Id = 2, X = 1, Y = 5 };
         defense.Aliens.Add(enemy);
         Advance(defense, 0.1f);

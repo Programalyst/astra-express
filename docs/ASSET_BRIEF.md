@@ -111,3 +111,6 @@ The saved profile uses Neutral tonemapping, zero exposure offset, contrast +6, s
 First review the rover, terrain scale, camera, and fog reveal, including a partly revealed 3 by 3 patch. Next review all three deposit sizes, the proposed extractor footprints, colony ports, panels, and the power overlay. Then review track and conduit sharing a corridor, a loaded train, and the delivery effect.
 
 Evaluate lighting and shaders on the actual Web build. Check that fog conceals shadows and effects, all statuses remain readable, and the chosen treatment maintains the target frame rate. Produce further variants only after these pieces work together.
+# Freight payload material
+
+The train's `Freight payload` is a runtime-generated box, not a prefab. Ore cargo shares the first renderer's material from `OreModel` (`Orefield`, currently `Assets/Imported/NuclearKnights/Prefabs/Terrain/Crystals/Crystal Blue.mat`), preserving the crystal shader and editable asset values. An unassigned ore model/material falls back to the generated orange material. Fluxite cargo likewise shares the first renderer's material from `FluxiteModel` (`Single Crystal`), falling back to the generated green material only when the model/material is unassigned. Editing either crystal material also changes its matching cargo. Payload shape, placement, and visibility are unchanged.

@@ -10,7 +10,7 @@ namespace AstraExpress
         private readonly Dictionary<LaserShot, LineRenderer> laserVisuals = new Dictionary<LaserShot, LineRenderer>();
         private LineRenderer turretRangeVisual;
         private Material laserMaterial;
-        private Rect DefensePanel => !Simulation.Paused && !pickingTile && !NetworkTool && !ConnectionPanelVisible ? new Rect(16, ObjectiveVisible ? 212 : 88, 270, 102) : Rect.zero;
+        private Rect DefensePanel => !Simulation.Paused && !pickingTile && !NetworkTool && !ConnectionPanelVisible ? new Rect(16, ObjectiveVisible ? 212 : 88, 270, 62) : Rect.zero;
         private Rect RepairPanel => SidebarVisible && selected != null && selected.Health < Structure.MaxHealth && !NetworkTool
             ? new Rect(Sidebar.x, Sidebar.yMax + 6, Sidebar.width, 62) : Rect.zero;
 
@@ -103,7 +103,6 @@ namespace AstraExpress
                     ? $"ALIEN WAVES / next in {Mathf.CeilToInt(Simulation.NextWaveIn)}s" : "FRONTIER DEFENSE", smallStyle);
                 GUI.Label(new Rect(panel.x + 12, panel.y + 29, panel.width - 24, 22), Simulation.RaidsStarted
                     ? $"Wave {Simulation.WaveNumber} / {Simulation.AliensDefeated} defeated / from NW" : "Mining 2x2 deposits attracts aliens.", smallStyle);
-                if (Button(new Rect(panel.x + 12, panel.y + 58, panel.width - 24, 32), "Laser turret [7] / 150 cr", active: tool == Tool.Turret)) SetTool(Tool.Turret);
             }
             if (RepairPanel != Rect.zero)
             {

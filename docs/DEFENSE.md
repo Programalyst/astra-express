@@ -12,9 +12,9 @@ Implemented gameplay, included in Sites version 13 on 15 September 2026. See [de
 
 ## Build defenses
 
-Use **Laser turret** in the compact **Frontier Defense** panel, or press **7**. The existing bottom toolbar is unchanged.
+Use **Turret** in the bottom toolbar after **Plant**, or press **7**. The compact **Frontier Defense** panel now only shows raid information. These refinements are local until the next deployment.
 
-- Cost: 150 credits; footprint: 1x1 clear, explored, level tile with a clear south port.
+- Cost: 100 credits; footprint: 1x1 clear, explored, level tile with a clear south port.
 - Connect the south port to colony conduits. No rail or owned train is needed.
 - Turrets automatically target the nearest revealed alien within seven tiles, deal 15 damage every 0.75 seconds, and consume 2 battery power per shot. They use power before extractor allocation, including the mining reserve. Empty batteries, disconnection, or disablement stop firing.
 - Terrain can block the line of fire; buildings are not projectile occluders in this version. The cyan range outline is a radius, not a guarantee of line of sight. Lasers are instant hits with brief visible beams.

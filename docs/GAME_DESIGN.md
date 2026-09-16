@@ -25,6 +25,7 @@ This revision replaces the earlier fixed-industry, refinery, food, and gate scen
 - Both plateaus are enclosed by cliffs on all four sides with low ground around them. The northern plateau has a smaller 7x7 flat top, southern access, and an eastern descent into the valley between the plateaus. See the current layout in [Terrain milestone](TERRAIN_MILESTONE.md).
 - All resource deposits are infinite. Exploration unlocks higher production rates while established mines remain useful indefinitely.
 - Extractors must connect to the solar and colony electrical network through power conduits.
+- Extractors may be built over existing conduits on their deposit. Those conduits remain intact, conduct power, and can be reused by power routes; the extractor still connects through its south port. Rails, vehicles, other buildings, and occupied enemy tiles still block placement. New conduit cells cannot be added beneath an existing extractor.
 - A shared colony battery supplies rover movement and ongoing extractor consumption.
 - Pausing extractors reduces demand and allows the battery to recover.
 - Tracks and trains transport extracted ore back to the colony. Deliveries earn credits.
@@ -129,7 +130,7 @@ The only Fluxite deposit is at `(13, 13)` (1 by 1). Ore sites are at `(10, 4)` (
 
 ### Alien defense
 
-Producing from either 2x2 deposit awakens alien waves from the northwest. Build conduit-powered automated laser turrets with the Frontier Defense panel or key 7. Defeated buildings are disabled rather than destroyed; select them for free timed repairs. Layouts, cargo, and owned trains are retained. See [Defense gameplay](DEFENSE.md) for implemented triggers, controls, balance, and recovery rules; this supersedes the earlier deferred-combat proposal.
+Producing from either 2x2 deposit awakens alien waves from the northwest. Build conduit-powered automated laser turrets for 100 credits using Turret after Plant in the bottom toolbar, or key 7. Defeated buildings are disabled rather than destroyed; select them for free timed repairs. Layouts, cargo, and owned trains are retained. See [Defense gameplay](DEFENSE.md) for implemented triggers, controls, balance, and recovery rules; this supersedes the earlier deferred-combat proposal.
 
 Construction requires revealed terrain. Proposed default: the rover does not need to stand beside every construction site. Exploration unlocks an area for building without requiring a second trip for every structure.
 

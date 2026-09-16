@@ -56,7 +56,7 @@
       link:{tool:rail ? "Rail" : "Conduit", origin:b.origin}, autoCue:true, primaryStep:step};
   }
   function constructionIntent(s) {
-    if (s.tool === "Turret") return tip("place-turret", "Place a defensive laser turret", s.placementReason || "150 credits, 1x1 clear explored tile, then connect the south port to power.", ["Use the cyan seven-tile range preview to cover approaches to buildings."], null);
+    if (s.tool === "Turret") return tip("place-turret", "Place a defensive laser turret", s.placementReason || "100 credits, 1x1 clear explored tile, then connect the south port to power.", ["Use the cyan seven-tile range preview to cover approaches to buildings."], null);
     if (!["Solar", "Extractor", "PowerPlant"].includes(s.tool)) return null;
     if (s.tool === "Extractor") {
       const deposits = s.deposits || [];
@@ -104,7 +104,7 @@
     const selectedTurret = (s.buildings || []).find(b => b.kind === "Turret" && same(b.origin, s.selected));
     if (selectedTurret && !selectedTurret.connected) return [routeTip(s, selectedTurret, false)];
     if (s.raidsStarted && s.tool === "Explore" && !(s.buildings || []).some(b => b.kind === "Turret" && b.connected && !b.disabled))
-      return [tip("defend-base", "Prepare for northwest alien waves", "Large-scale mining has awakened aliens. Wired laser turrets defend a seven-tile radius using 2 battery power per shot.", ["Choose Laser turret in Frontier Defense or press 7, place it on clear explored ground, then connect its south port."], null)];
+      return [tip("defend-base", "Prepare for northwest alien waves", "Large-scale mining has awakened aliens. Wired laser turrets defend a seven-tile radius using 2 battery power per shot.", ["Choose Turret after Plant in the bottom toolbar or press 7, place it on clear explored ground, then connect its south port."], null)];
     if (s.battery < 20 && s.demand > s.generation) {
       const active = ordered.find(b => b.connected && !b.paused && b.stock < b.storage);
       if (active) return [tip(`power-low-${active.origin.x}-${active.origin.y}`, "Let the battery recover",

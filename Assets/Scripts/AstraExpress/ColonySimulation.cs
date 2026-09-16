@@ -263,7 +263,7 @@ namespace AstraExpress
                 if (!IsRevealed(cell)) { reason = "The complete footprint must be explored."; return false; }
                 if (Terrain.Kind(cell) != TerrainKind.Flat || Terrain.Elevation(cell) != Terrain.Elevation(origin))
                 { reason = "Buildings need a level footprint. Keep ramps and hillsides clear."; return false; }
-                if (StructureAt(cell) != null || Rails.Contains(cell) || Conduits.Contains(cell) || cell.Equals(RoverCell) || TrainOccupies(cell))
+                if (StructureAt(cell) != null || Rails.Contains(cell) || (kind != StructureKind.Extractor && Conduits.Contains(cell)) || cell.Equals(RoverCell) || TrainOccupies(cell))
                 { reason = "Footprint occupied. Leave room for vehicles and infrastructure."; return false; }
                 if (kind != StructureKind.Extractor && DepositAt(cell) != null) { reason = "Keep resource deposits free for extractors."; return false; }
                 if (Structures.Any(structure => structure.Port.Equals(cell))) { reason = "Keep the connection ports clear."; return false; }
@@ -358,11 +358,17 @@ namespace AstraExpress
             return scores.ToDictionary(pair => pair.Key, pair => pair.Value / 1024);
         }
 
+        private bool NetworkCellAvailable(Cell cell, bool rail)
+        {
+            var structure = StructureAt(cell);
+            return structure == null || (!rail && structure.Kind == StructureKind.Extractor && Conduits.Contains(cell));
+        }
+
         private Dictionary<Cell, int> SearchNetworkRoutes(Cell start, bool rail, out Dictionary<Cell, Cell> previous, ISet<Cell> excluded = null)
         {
             previous = new Dictionary<Cell, Cell>();
             var scores = new Dictionary<Cell, int>();
-            bool Allowed(Cell cell) => IsRevealed(cell) && Terrain.Walkable(cell) && StructureAt(cell) == null && (excluded == null || !excluded.Contains(cell));
+            bool Allowed(Cell cell) => IsRevealed(cell) && Terrain.Walkable(cell) && NetworkCellAvailable(cell, rail) && (excluded == null || !excluded.Contains(cell));
             if (!Allowed(start)) return scores;
             var network = rail ? Rails : Conduits;
             int price = rail ? 3 : 2;
@@ -402,7 +408,7 @@ namespace AstraExpress
             for (int index = 0; index < path.Count; index++)
             {
                 var cell = path[index];
-                if (!IsRevealed(cell) || StructureAt(cell) != null) { reason = "Route must stay on explored, unoccupied ground."; return false; }
+                if (!IsRevealed(cell) || !NetworkCellAvailable(cell, rail)) { reason = "Route must stay on explored, unoccupied ground or reuse existing conduits beneath extractors."; return false; }
                 if (!Terrain.Walkable(cell)) { reason = "Hillsides are impassable. Route through a ramp pass."; return false; }
                 if (index > 0 && !cell.Equals(path[index - 1]) && !Terrain.CanTraverse(path[index - 1], cell))
                 { reason = "Use a ramp to change elevation. Routes must run straight up or down ramps; R changes the route bend."; return false; }
